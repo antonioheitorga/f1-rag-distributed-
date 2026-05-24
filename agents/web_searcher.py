@@ -10,8 +10,17 @@ from datetime import datetime, timezone
 
 from tavily import TavilyClient
 
+from agents._retry import external_call_retry
+
 
 DEFAULT_MAX_RESULTS = 5
+
+
+@external_call_retry
+def _call_tavily(client: TavilyClient, query: str, max_results: int) -> dict:
+    """Chama a API Tavily com retry — isolado para o try/except externo
+    capturar apenas o erro final, após as tentativas se esgotarem."""
+    return client.search(query=query, max_results=max_results)
 
 
 def search_web(state: dict) -> dict:
@@ -36,7 +45,7 @@ def search_web(state: dict) -> dict:
     else:
         try:
             client = TavilyClient(api_key=api_key)
-            response = client.search(query=query, max_results=max_results)
+            response = _call_tavily(client, query, max_results)
             resultados = [
                 {
                     "titulo": r.get("title", ""),

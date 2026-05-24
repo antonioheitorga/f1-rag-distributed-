@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agents._retry import external_call_retry
 
 
 DEFAULT_COLLECTION = "fia_2026_regulations"
@@ -17,11 +18,20 @@ DEFAULT_THRESHOLD = 0.75
 
 
 def _vectorstore_path() -> Path:
-    """Resolve caminho do vectorstore persistente."""
+    """Resolve caminho do vectorstore persistente.
+
+    Prioriza a variável de ambiente CHROMA_PERSIST_DIR (necessária em
+    deploys distribuídos onde o path difere entre instâncias). Caso
+    ausente, usa o path padrão relativo à raiz do projeto.
+    """
+    chroma_dir = os.getenv("CHROMA_PERSIST_DIR")
+    if chroma_dir:
+        return Path(chroma_dir)
     base_dir = Path(__file__).resolve().parent.parent
     return base_dir / "dados" / "vectorstore"
 
 
+@external_call_retry
 def _embed_query(query: str) -> list[float]:
     """Gera embedding da query usando modelo configurado no .env."""
     import ollama

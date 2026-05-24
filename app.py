@@ -1,7 +1,6 @@
 """Interface Streamlit do F1 RAG System."""
 
 import json
-from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -101,18 +100,26 @@ with st.form("query_form", clear_on_submit=True):
     submitted = st.form_submit_button("Perguntar", type="primary")
 
 if submitted and query.strip():
-    with st.spinner("Processando..."):
-        state = run(query.strip())
-
-    item = {
-        "query": query.strip(),
-        "resposta": state.get("resposta", ""),
-        "fonte": state.get("fonte", "none"),
-        "low_confidence": state.get("low_confidence", False),
-        "trace": state.get("trace", []),
-        "session_id": state.get("session_id", ""),
-    }
-    st.session_state.historico.insert(0, item)
+    try:
+        with st.spinner("Processando..."):
+            state = run(query.strip())
+    except Exception as exc:
+        st.error(
+            "Erro ao processar a pergunta. Verifique se o Ollama está em execução "
+            "e se o vector store foi indexado."
+        )
+        with st.expander("Detalhes técnicos"):
+            st.code(f"{type(exc).__name__}: {exc}", language="text")
+    else:
+        item = {
+            "query": query.strip(),
+            "resposta": state.get("resposta", ""),
+            "fonte": state.get("fonte", "none"),
+            "low_confidence": state.get("low_confidence", False),
+            "trace": state.get("trace", []),
+            "session_id": state.get("session_id", ""),
+        }
+        st.session_state.historico.insert(0, item)
 
 elif submitted and not query.strip():
     st.error("Digite uma pergunta antes de enviar.")

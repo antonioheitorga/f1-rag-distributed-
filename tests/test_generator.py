@@ -26,12 +26,11 @@ def test_generate_corpus_only(mock_prompt_cls, _mock_llm_cls):
 
     result = generate(state)
 
-    assert "generator_result" in result
-    gr = result["generator_result"]
-    assert gr["answer"] == "Resposta baseada no corpus."
-    assert gr["sources_used"] == "corpus"
-    assert gr["low_confidence"] is False
-    assert gr["confidence_notice"] is None
+    assert result["resposta"] == "Resposta baseada no corpus."
+    assert result["corpus_used"] is True
+    assert result["web_used"] is False
+    assert result["low_confidence"] is False
+    assert result["confidence_warning"] is None
     assert result["trace"][-1]["agente"] == "generator"
 
 
@@ -58,11 +57,11 @@ def test_generate_web_fallback_com_resultados(mock_prompt_cls, _mock_llm_cls):
     }
 
     result = generate(state)
-    gr = result["generator_result"]
 
-    assert gr["sources_used"] == "web"
-    assert gr["low_confidence"] is False
-    assert gr["confidence_notice"] is None
+    assert result["corpus_used"] is False
+    assert result["web_used"] is True
+    assert result["low_confidence"] is False
+    assert result["confidence_warning"] is None
 
 
 @patch("agents.generator.ChatOllama")
@@ -83,11 +82,11 @@ def test_generate_sem_contexto_low_confidence(mock_prompt_cls, _mock_llm_cls):
     }
 
     result = generate(state)
-    gr = result["generator_result"]
 
-    assert gr["sources_used"] == "none"
-    assert gr["low_confidence"] is True
-    assert "Score abaixo" in gr["confidence_notice"]
+    assert result["corpus_used"] is False
+    assert result["web_used"] is False
+    assert result["low_confidence"] is True
+    assert "Score abaixo" in result["confidence_warning"]
 
 
 @patch("agents.generator.ChatOllama")
@@ -110,7 +109,8 @@ def test_generate_hybrid(mock_prompt_cls, _mock_llm_cls):
     }
 
     result = generate(state)
-    assert result["generator_result"]["sources_used"] == "hybrid"
+    assert result["corpus_used"] is True
+    assert result["web_used"] is True
 
 
 def test_generate_state_invalido():

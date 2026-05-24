@@ -52,14 +52,9 @@ def _fake_search_web(state):
 
 def _fake_generate(state):
     return {
-        "generator_result": {
-            "answer": "final answer",
-            "sources_used": "corpus",
-            "low_confidence": False,
-            "confidence_notice": None,
-        },
         "resposta": "final answer",
-        "fonte": "corpus",
+        "corpus_used": True,
+        "web_used": False,
         "low_confidence": False,
         "confidence_warning": None,
         "trace": state.get("trace", []) + [{"agente": "generator"}],
@@ -116,4 +111,5 @@ def test_state_final_completo(mock_ref, mock_ret, mock_web, mock_gen):
     assert final_state["resposta"] == "final answer"
     assert final_state["fonte"] == "corpus"
     assert final_state["low_confidence"] is False
-    assert "generator_result" in final_state
+    assert final_state["confidence_warning"] is None
+    assert [t["agente"] for t in final_state["trace"]] == ["reformulator", "retriever", "generator"]

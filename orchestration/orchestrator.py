@@ -29,12 +29,29 @@ class GraphState(TypedDict, total=False):
     query_reformulada: str
     retriever_result: dict
     web_result: dict
-    generator_result: dict
     resposta: str
+    corpus_used: bool
+    web_used: bool
     fonte: str
     low_confidence: bool
     confidence_warning: str | None
     trace: list[dict]
+
+
+def _classify_source(corpus_used: bool, web_used: bool) -> str:
+    """Classifica a fonte usada na resposta a partir dos flags do Generator.
+
+    Responsabilidade do orquestrador: o Generator reporta apenas o que
+    consumiu (corpus_used/web_used); o nome agregado (corpus/web/hybrid/none)
+    é metadado de execução do fluxo, não da geração de texto.
+    """
+    if corpus_used and web_used:
+        return "hybrid"
+    if corpus_used:
+        return "corpus"
+    if web_used:
+        return "web"
+    return "none"
 
 
 def _route_after_retriever(state: GraphState) -> str:
@@ -82,6 +99,10 @@ def run(query_original: str, session_id: str | None = None) -> dict:
         "trace": [],
     }
     state = build_graph().invoke(initial_state)
+    state["fonte"] = _classify_source(
+        state.get("corpus_used", False),
+        state.get("web_used", False),
+    )
     _export_trace(state, sid)
     return state
 

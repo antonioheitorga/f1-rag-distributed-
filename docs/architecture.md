@@ -56,14 +56,13 @@ flowchart TD
 | `session_id` | `str` | Orquestrador (START) | Todos (trace) |
 | `query_reformulada` | `str` | Reformulador | Retriever, Web Searcher |
 | `retriever_result` | `dict` | Retriever | Orquestrador, Gerador |
-| `web_result` | `dict\|None` | Web Searcher | Orquestrador, Gerador |
-| `resultados_web` | `list[dict]\|None` | Orquestrador/Web Searcher (compat) | Gerador |
-| `encontrou_web` | `bool\|None` | Orquestrador/Web Searcher (compat) | Gerador |
-| `fonte` | `str` | Orquestrador ou Gerador | Streamlit |
-| `low_confidence` | `bool` | Orquestrador ou Gerador | Streamlit |
+| `web_result` | `dict\|None` | Web Searcher | Gerador |
+| `corpus_used` | `bool` | Gerador | Orquestrador (classifica `fonte`) |
+| `web_used` | `bool` | Gerador | Orquestrador (classifica `fonte`) |
+| `fonte` | `str` | Orquestrador (pós-grafo) | Streamlit, export JSON |
+| `low_confidence` | `bool` | Gerador | Streamlit |
 | `confidence_warning` | `str\|None` | Retriever ou Gerador | Streamlit |
 | `resposta` | `str` | Gerador | Orquestrador (END), Streamlit |
-| `generator_result` | `dict` | Gerador | Orquestrador, Streamlit |
 | `trace` | `list[dict]` | Todos (append) | Streamlit, export JSON |
 
 ### `retriever_result` — shape completo
@@ -123,8 +122,8 @@ flowchart TD
 | **Reformulador** | `agents/reformulator.py` | ✅ llama3.1:8b | `query_original` | `query_reformulada`, `trace` |
 | **Retriever** | `agents/retriever.py` | ❌ | `query_reformulada` | `retriever_result`, `trace` |
 | **Web Searcher** | `agents/web_searcher.py` | ❌ | `query_reformulada` | `web_result`, `trace` |
-| **Gerador** | `agents/generator.py` | ✅ llama3.1:8b | `query_original/query_reformulada`, `retriever_result`, `web_result` (ou `resultados_web`/`encontrou_web`) | `generator_result`, `resposta`, `fonte`, `low_confidence`, `confidence_warning`, `trace` |
-| **Orquestrador** | `orchestration/orchestrator.py` | ❌ | `retriever_result`, `web_result` | `fonte`, `low_confidence` |
+| **Gerador** | `agents/generator.py` | ✅ llama3.1:8b | `query_original/query_reformulada`, `retriever_result`, `web_result` | `resposta`, `corpus_used`, `web_used`, `low_confidence`, `confidence_warning`, `trace` |
+| **Orquestrador** | `orchestration/orchestrator.py` | ❌ | `retriever_result` (roteamento), `corpus_used`/`web_used` (classificação) | `session_id`, `trace` (init), `fonte` (pós-grafo) |
 
 ---
 

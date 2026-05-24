@@ -11,19 +11,15 @@ from datetime import datetime, timezone
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 
+from agents._retry import external_call_retry
+from prompts import load_prompt
 
-PROMPT_TEMPLATE = """You are a Formula 1 expert. Rewrite the user's query to optimize semantic search over FIA F1 2026 technical regulations.
 
-Rules:
-- Preserve the original meaning
-- Expand acronyms (e.g., DRS -> Drag Reduction System)
-- Use formal regulatory vocabulary
-- Always respond in English, regardless of the input language
-- Output ONLY the rewritten query: no quotes, no explanations, no prefixes
-
-Original query: {query}
-
-Rewritten query:"""
+@external_call_retry
+def _invoke_llm(chain, params: dict):
+    """Invoca a chain LLM com retry — isolado para não re-executar
+    montagem de prompt ou append de trace em falhas transientes."""
+    return chain.invoke(params)
 
 
 def reformulate(state: dict) -> dict:
@@ -40,8 +36,8 @@ def reformulate(state: dict) -> dict:
         model=os.getenv("LLM_MODEL", "llama3.1:8b"),
         temperature=0.0,
     )
-    chain = ChatPromptTemplate.from_template(PROMPT_TEMPLATE) | llm
-    resposta = chain.invoke({"query": query_original})
+    chain = ChatPromptTemplate.from_template(load_prompt("reformulator")) | llm
+    resposta = _invoke_llm(chain, {"query": query_original})
     query_reformulada = resposta.content.strip().strip('"\'').strip()
 
     return {

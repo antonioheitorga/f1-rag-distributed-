@@ -23,6 +23,9 @@ streamlit==1.40.2
 # Config
 python-dotenv==1.0.1
 
+# Resiliência (retry + backoff em chamadas externas)
+tenacity==9.0.0
+
 # Testes
 pytest==8.3.4
 pytest-mock==3.14.0
