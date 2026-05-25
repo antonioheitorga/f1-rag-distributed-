@@ -94,8 +94,8 @@ ollama pull nomic-embed-text
 
 ```bash
 docker compose up -d ollama
-docker exec -it f1-rag-ollama ollama pull llama3.1:8b
-docker exec -it f1-rag-ollama ollama pull nomic-embed-text
+docker exec -it harness-rag-ollama ollama pull llama3.1:8b
+docker exec -it harness-rag-ollama ollama pull nomic-embed-text
 ```
 
 ### 3. Configurar variáveis de ambiente

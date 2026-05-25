@@ -1,7 +1,7 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: f1-rag-ollama
+    container_name: harness-rag-ollama
     ports:
       - "11434:11434"
     volumes:
@@ -15,5 +15,41 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+  localstack:
+    # Versão fixada da Community (latest virou Pro e exige licença).
+    # 3.8 é a última grande versão Community estável antes da mudança.
+    image: localstack/localstack:3.8
+    container_name: harness-rag-localstack
+    ports:
+      - "4566:4566"  # gateway único do LocalStack (SQS, CloudWatch, etc.)
+    environment:
+      - SERVICES=sqs  # habilita só SQS por enquanto; CloudWatch entra em §4.6
+      - DEBUG=0
+      - PERSISTENCE=0  # filas somem em down; para persistir, mudar para 1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: harness-rag-worker
+    depends_on:
+      - ollama
+      - localstack
+    environment:
+      - OLLAMA_BASE_URL=http://harness-rag-ollama:11434
+      - AWS_ENDPOINT_URL=http://harness-rag-localstack:4566
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - CHROMA_PERSIST_DIR=/app/dados/vectorstore
+    volumes:
+      # Vector store fora do container para sobreviver a down/up e ser
+      # acessado pela aplicação Streamlit do host.
+      - ./dados/vectorstore:/app/dados/vectorstore
+      - ./dados/corpus:/app/dados/corpus:ro  # corpus em read-only
+    restart: unless-stopped
+
 volumes:
   ollama_models:
+  localstack_data:

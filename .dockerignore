@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.pytest_cache
+.mypy_cache
+.coverage
+
+# Ambientes virtuais
+.venv
+venv
+env
+ENV
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Variáveis sensíveis
+.env
+.env.local
+
+# Dados gerados em runtime — não vão para a imagem
+dados/extracted
+dados/processed
+dados/chunks
+dados/vectorstore
+traces
+
+# Docker (não copiar para dentro da imagem)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Documentação grande (README cabe; arquitetura cabe; outros não)
+*.log
