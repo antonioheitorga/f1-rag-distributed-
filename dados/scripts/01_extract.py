@@ -2,51 +2,21 @@
 01_extract.py
 Extrai texto de todos os PDFs do corpus usando pdfplumber.
 Salva cada PDF como um JSON em extracted/ com metadados por página.
+
+Wrapper sequencial sobre dados/ingestion.py::extract_pdf().
 """
 
 import json
-import pdfplumber
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+from dados.ingestion import extract_pdf  # noqa: E402
 
 CORPUS_DIR = Path(__file__).parent.parent / "corpus"
 OUTPUT_DIR = Path(__file__).parent.parent / "extracted"
 OUTPUT_DIR.mkdir(exist_ok=True)
-
-# Mapeamento de seções para categorias legíveis
-SECTION_MAP = {
-    "section_a": "general_provisions",
-    "section_b": "sporting",
-    "section_c": "technical",
-    "section_d": "financial_f1_teams",
-    "section_e": "financial_pu_manufacturers",
-    "section_f": "operational",
-}
-
-
-def detect_section(filename: str) -> str:
-    for key, label in SECTION_MAP.items():
-        if key in filename:
-            return label
-    return "unknown"
-
-
-def extract_pdf(pdf_path: Path) -> dict:
-    pages = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
-            text = page.extract_text() or ""
-            pages.append({
-                "page": i,
-                "text": text,
-                "char_count": len(text),
-            })
-
-    return {
-        "source_file": pdf_path.name,
-        "section": detect_section(pdf_path.name),
-        "total_pages": len(pages),
-        "pages": pages,
-    }
 
 
 def main():

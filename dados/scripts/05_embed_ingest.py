@@ -3,8 +3,8 @@
 Gera embeddings dos chunks com Ollama (nomic-embed-text)
 e indexa no ChromaDB com metadados (fonte, seção, chunk_id).
 
-Uso:
-    python3 scripts/05_embed_ingest.py
+Wrapper sequencial sobre dados/ingestion.py::ingest_chunks() +
+build_chunks_for_ingest().
 
 Pré-requisitos:
     - Ollama rodando localmente com nomic-embed-text disponível
@@ -12,82 +12,26 @@ Pré-requisitos:
 """
 
 import json
+import sys
 import time
 from pathlib import Path
 
-import chromadb
-import ollama
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-# ---------------------------------------------------------------------------
-# Configuração
-# ---------------------------------------------------------------------------
-CHUNKS_DIR   = Path(__file__).parent.parent / "chunks"
-VECTORSTORE  = Path(__file__).parent.parent / "vectorstore"
-COLLECTION   = "fia_2026_regulations"
-EMBED_MODEL  = "nomic-embed-text"
-BATCH_SIZE   = 32   # chunks por chamada ao Ollama
-MIN_CHARS    = 30   # ignora chunks muito curtos (marcadores de página)
+import chromadb  # noqa: E402
+import ollama  # noqa: E402
 
+from dados.ingestion import (  # noqa: E402
+    EMBED_BATCH_SIZE,
+    EMBED_MODEL,
+    build_chunks_for_ingest,
+    ingest_chunks,
+)
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+CHUNKS_DIR = Path(__file__).parent.parent / "chunks"
+VECTORSTORE = Path(__file__).parent.parent / "vectorstore"
+COLLECTION = "fia_2026_regulations"
 
-def load_chunks(json_path: Path) -> list[dict]:
-    """Carrega e filtra chunks com conteúdo suficiente."""
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    source   = data["source_file"]
-    section  = data["section"]
-    filtered = [
-        {
-            "uid":     f"{json_path.stem}_{c['id']}",
-            "text":    c["text"],
-            "metadata": {
-                "source_file": source,
-                "section":     section,
-                "chunk_id":    c["id"],
-                "char_count":  c["char_count"],
-            },
-        }
-        for c in data["chunks"]
-        if c["char_count"] >= MIN_CHARS
-    ]
-    return filtered
-
-
-def embed_batch(texts: list[str]) -> list[list[float]]:
-    """Gera embeddings para um lote de textos via Ollama."""
-    response = ollama.embed(model=EMBED_MODEL, input=texts)
-    return response["embeddings"]
-
-
-def ingest_to_chroma(collection, chunks: list[dict]) -> int:
-    """Ingere chunks no ChromaDB em batches. Retorna total inserido."""
-    inserted = 0
-    for i in range(0, len(chunks), BATCH_SIZE):
-        batch = chunks[i : i + BATCH_SIZE]
-        texts     = [c["text"]     for c in batch]
-        ids       = [c["uid"]      for c in batch]
-        metadatas = [c["metadata"] for c in batch]
-
-        embeddings = embed_batch(texts)
-
-        collection.add(
-            ids=ids,
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas,
-        )
-        inserted += len(batch)
-
-    return inserted
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     # Verifica conexão com Ollama
@@ -102,7 +46,6 @@ def main():
         print("Verifique se o Ollama está rodando: ollama serve")
         return
 
-    # Inicializa ChromaDB persistente
     VECTORSTORE.mkdir(exist_ok=True)
     client = chromadb.PersistentClient(path=str(VECTORSTORE))
 
@@ -117,7 +60,6 @@ def main():
         metadata={"hnsw:space": "cosine"},
     )
 
-    # Processa cada arquivo de chunks
     chunk_files = sorted(CHUNKS_DIR.glob("*_chunks.json"))
     if not chunk_files:
         print("Nenhum arquivo de chunks encontrado. Execute 04_chunk.py primeiro.")
@@ -126,19 +68,22 @@ def main():
     print(f"Modelo de embedding : {EMBED_MODEL}")
     print(f"Vector store        : {VECTORSTORE}")
     print(f"Collection          : {COLLECTION}")
-    print(f"Batch size          : {BATCH_SIZE}")
+    print(f"Batch size          : {EMBED_BATCH_SIZE}")
     print(f"Arquivos de chunks  : {len(chunk_files)}\n")
 
     total_inserted = 0
     start = time.time()
 
     for chunk_file in chunk_files:
-        chunks = load_chunks(chunk_file)
-        section = chunks[0]["metadata"]["section"] if chunks else "?"
+        with open(chunk_file, encoding="utf-8") as f:
+            chunks_data = json.load(f)
+
+        chunks = build_chunks_for_ingest(chunks_data)
+        section = chunks_data.get("section", "?")
         print(f"Ingerindo [{section}] — {len(chunks)} chunks válidos ...", end=" ", flush=True)
 
         t0 = time.time()
-        n = ingest_to_chroma(collection, chunks)
+        n = ingest_chunks(collection, chunks)
         elapsed = time.time() - t0
 
         total_inserted += n
