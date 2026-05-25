@@ -32,23 +32,30 @@ services:
 
   worker:
     build: .
-    container_name: harness-rag-worker
+    # Sem container_name: permite escalar com `docker compose up --scale worker=N`.
+    # Containers nascem como harness-rag-worker-1, harness-rag-worker-2, etc.
     depends_on:
       - ollama
       - localstack
     environment:
-      - OLLAMA_BASE_URL=http://harness-rag-ollama:11434
+      - OLLAMA_BASE_URL=http://harness-rag-ollama:11434   # usado por langchain
+      - OLLAMA_HOST=http://harness-rag-ollama:11434       # usado pela lib `ollama` nativa
       - AWS_ENDPOINT_URL=http://harness-rag-localstack:4566
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - CHROMA_PERSIST_DIR=/app/dados/vectorstore
+      - SQS_QUEUE_NAME=ingestion-jobs
+      # Demo-friendly: sai sozinho após 60s sem mensagens. Em produção,
+      # setar 0 (infinito) para workers permanecerem disponíveis.
+      - WORKER_IDLE_TIMEOUT_SEC=60
+    command: ["python", "infra/worker.py"]
     volumes:
       # Vector store fora do container para sobreviver a down/up e ser
       # acessado pela aplicação Streamlit do host.
       - ./dados/vectorstore:/app/dados/vectorstore
       - ./dados/corpus:/app/dados/corpus:ro  # corpus em read-only
-    restart: unless-stopped
+    restart: "no"  # idle_timeout encerra de propósito; restart atrapalharia
 
 volumes:
   ollama_models:

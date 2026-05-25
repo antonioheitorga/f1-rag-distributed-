@@ -30,10 +30,17 @@ COPY . .
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     OLLAMA_BASE_URL=http://harness-rag-ollama:11434 \
+    OLLAMA_HOST=http://harness-rag-ollama:11434 \
     AWS_ENDPOINT_URL=http://harness-rag-localstack:4566 \
     AWS_DEFAULT_REGION=us-east-1 \
     AWS_ACCESS_KEY_ID=test \
     AWS_SECRET_ACCESS_KEY=test
+
+# Notas sobre as duas vars do Ollama:
+# - OLLAMA_BASE_URL: lido por langchain (ChatOllama no agents/generator.py)
+# - OLLAMA_HOST:     lido pelo cliente nativo da lib `ollama` (usado por
+#                    agents/retriever.py e dados/ingestion.py via ollama.embed())
+# Manter as duas até unificarmos em um wrapper que aceite host explícito.
 
 # Placeholder até §4.4 implementar o worker.py
 CMD ["tail", "-f", "/dev/null"]
