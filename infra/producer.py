@@ -29,23 +29,54 @@ CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
 VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
 
 SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "ingestion-jobs")
+SQS_DLQ_NAME = os.getenv("SQS_DLQ_NAME", f"{SQS_QUEUE_NAME}-dlq")
+SQS_MAX_RECEIVE_COUNT = int(os.getenv("SQS_MAX_RECEIVE_COUNT", "3"))
 AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
 COLLECTION = os.getenv("CHROMA_COLLECTION", "fia_2026_regulations")
 
 
-def _get_or_create_queue(sqs) -> str:
-    """Cria a fila se não existir; retorna QueueUrl."""
+def _get_or_create_dlq(sqs) -> tuple[str, str]:
+    """Cria a DLQ se não existir; retorna (QueueUrl, QueueArn)."""
+    existing = sqs.list_queues(QueueNamePrefix=SQS_DLQ_NAME).get("QueueUrls", [])
+    dlq_url = None
+    for url in existing:
+        if url.endswith(f"/{SQS_DLQ_NAME}"):
+            dlq_url = url
+            break
+    if dlq_url is None:
+        response = sqs.create_queue(
+            QueueName=SQS_DLQ_NAME,
+            Attributes={
+                "MessageRetentionPeriod": "1209600",  # 14 dias — DLQ guarda mais tempo p/ debug
+            },
+        )
+        dlq_url = response["QueueUrl"]
+
+    attrs = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])
+    return dlq_url, attrs["Attributes"]["QueueArn"]
+
+
+def _get_or_create_main_queue(sqs, dlq_arn: str) -> str:
+    """Cria a fila principal com RedrivePolicy apontando para a DLQ.
+    Se já existir, atualiza os atributos (idempotente)."""
+    redrive_policy = json.dumps({
+        "deadLetterTargetArn": dlq_arn,
+        "maxReceiveCount": SQS_MAX_RECEIVE_COUNT,
+    })
+    attributes = {
+        "VisibilityTimeout": os.getenv("SQS_VISIBILITY_TIMEOUT", "600"),
+        "MessageRetentionPeriod": "86400",  # 1 dia
+        "RedrivePolicy": redrive_policy,
+    }
+
     existing = sqs.list_queues(QueueNamePrefix=SQS_QUEUE_NAME).get("QueueUrls", [])
     for url in existing:
         if url.endswith(f"/{SQS_QUEUE_NAME}"):
+            # Atualiza atributos (pode ter mudado RedrivePolicy ou VisibilityTimeout)
+            sqs.set_queue_attributes(QueueUrl=url, Attributes=attributes)
             return url
-    response = sqs.create_queue(
-        QueueName=SQS_QUEUE_NAME,
-        Attributes={
-            "VisibilityTimeout": "600",      # 10 min para o worker processar
-            "MessageRetentionPeriod": "86400",  # 1 dia
-        },
-    )
+
+    response = sqs.create_queue(QueueName=SQS_QUEUE_NAME, Attributes=attributes)
     return response["QueueUrl"]
 
 
@@ -75,7 +106,9 @@ def main():
     print("=" * 60)
     print(f"PDFs encontrados   : {len(pdfs)}")
     print(f"SQS endpoint       : {AWS_ENDPOINT_URL}")
-    print(f"Fila               : {SQS_QUEUE_NAME}")
+    print(f"Fila principal     : {SQS_QUEUE_NAME}")
+    print(f"DLQ                : {SQS_DLQ_NAME}")
+    print(f"maxReceiveCount    : {SQS_MAX_RECEIVE_COUNT}")
     print(f"Vector store       : {VECTORSTORE}")
     print(f"Collection         : {COLLECTION}")
     print()
@@ -83,7 +116,10 @@ def main():
     _reset_collection()
 
     sqs = boto3.client("sqs", endpoint_url=AWS_ENDPOINT_URL)
-    queue_url = _get_or_create_queue(sqs)
+    dlq_url, dlq_arn = _get_or_create_dlq(sqs)
+    queue_url = _get_or_create_main_queue(sqs, dlq_arn)
+    print(f"DLQ URL            : {dlq_url}")
+    print(f"DLQ ARN            : {dlq_arn}")
     print(f"Queue URL          : {queue_url}\n")
 
     published = 0
