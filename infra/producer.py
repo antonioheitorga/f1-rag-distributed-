@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import boto3  # noqa: E402
 import chromadb  # noqa: E402
 
+from infra.metrics import emit_metric  # noqa: E402
+
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
 VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
@@ -134,6 +136,8 @@ def main():
         )
         published += 1
         print(f"  → publicado: {pdf.name}")
+
+    emit_metric("jobs_published", published)
 
     print()
     print("=" * 60)

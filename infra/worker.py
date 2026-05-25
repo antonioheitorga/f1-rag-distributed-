@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import boto3  # noqa: E402
 
 from dados.ingestion import process_single_pdf  # noqa: E402
+from infra.metrics import emit_metric  # noqa: E402
 
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
@@ -140,6 +141,9 @@ def main():
                     chunks=result["chunks_inserted"],
                     duration_ms=result["duration_ms"],
                 )
+                emit_metric("pdf_processed_success", 1)
+                emit_metric("pdf_processing_duration_ms", result["duration_ms"], unit="Milliseconds")
+                emit_metric("chunks_inserted", result["chunks_inserted"])
             except Exception as exc:
                 failed += 1
                 _log(
@@ -147,6 +151,7 @@ def main():
                     pdf=body_preview,
                     error=f"{type(exc).__name__}: {exc}",
                 )
+                emit_metric("pdf_processed_error", 1)
                 # Não deleta — mensagem volta pra fila após visibility timeout.
                 # DLQ (§4.5) capturará após N tentativas.
 

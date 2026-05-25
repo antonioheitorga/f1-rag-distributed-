@@ -23,9 +23,9 @@ services:
     ports:
       - "4566:4566"  # gateway único do LocalStack (SQS, CloudWatch, etc.)
     environment:
-      - SERVICES=sqs  # habilita só SQS por enquanto; CloudWatch entra em §4.6
+      - SERVICES=sqs,cloudwatch  # SQS para filas + CloudWatch para métricas (§4.6)
       - DEBUG=0
-      - PERSISTENCE=0  # filas somem em down; para persistir, mudar para 1
+      - PERSISTENCE=0  # filas/métricas somem em down; para persistir, mudar para 1
     volumes:
       - localstack_data:/var/lib/localstack
     restart: unless-stopped
