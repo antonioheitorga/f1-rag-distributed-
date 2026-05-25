@@ -20,9 +20,6 @@ COPY requirements.txt ./
 COPY dados/requirements.txt dados/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# boto3 — cliente AWS para SQS/CloudWatch (não está no requirements.txt principal)
-RUN pip install --no-cache-dir "boto3==1.35.0"
-
 # Copia o restante do código (depois do install para não invalidar cache)
 COPY . .
 

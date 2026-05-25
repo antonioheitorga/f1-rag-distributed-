@@ -174,7 +174,7 @@ def preprocess_data(data: dict) -> dict:
 # Passo 4 — Chunking
 # ---------------------------------------------------------------------------
 
-def _build_full_text(data: dict) -> str:
+def build_full_text(data: dict) -> str:
     parts = []
     for page in data["pages"]:
         text = page["text"].strip()
@@ -196,7 +196,7 @@ def chunk_data(data: dict, chunk_size: Optional[int] = None,
         length_function=len,
     )
 
-    full_text = _build_full_text(data)
+    full_text = build_full_text(data)
     chunks = splitter.split_text(full_text)
 
     return {

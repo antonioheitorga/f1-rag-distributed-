@@ -18,7 +18,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E40
 from dados.ingestion import (  # noqa: E402
     BEST_CHUNK_CONFIG,
     CHUNK_SEPARATORS,
-    _build_full_text,
+    build_full_text,
     chunk_data,
 )
 
@@ -87,7 +87,7 @@ def main():
             data = json.load(f)
 
         # Testes exploratórios
-        _run_size_tests(_build_full_text(data), data["source_file"])
+        _run_size_tests(build_full_text(data), data["source_file"])
 
         # Chunking de produção
         chunked = chunk_data(data)
