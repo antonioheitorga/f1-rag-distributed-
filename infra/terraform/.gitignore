@@ -1,0 +1,16 @@
+# State do Terraform — contém ARNs, IPs, e potencialmente credenciais.
+# Pra projeto solo basta gitignore local; produção usaria remote backend (S3).
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.tfstate.lock.info
+
+# Diretório de cache do provider (baixado pelo terraform init)
+.terraform/
+.terraform.lock.hcl
+
+# Variáveis sobrescritas localmente (podem conter dados sensíveis)
+terraform.tfvars
+*.auto.tfvars
+
+# Plans salvos
+*.tfplan
