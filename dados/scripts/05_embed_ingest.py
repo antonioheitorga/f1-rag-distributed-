@@ -21,16 +21,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import chromadb  # noqa: E402
 import ollama  # noqa: E402
 
+from config import CHROMA_COLLECTION, EMBED_MODEL  # noqa: E402
 from dados.ingestion import (  # noqa: E402
     EMBED_BATCH_SIZE,
-    EMBED_MODEL,
     build_chunks_for_ingest,
     ingest_chunks,
 )
 
 CHUNKS_DIR = Path(__file__).parent.parent / "chunks"
 VECTORSTORE = Path(__file__).parent.parent / "vectorstore"
-COLLECTION = "fia_2026_regulations"
+COLLECTION = CHROMA_COLLECTION
 
 
 def main():

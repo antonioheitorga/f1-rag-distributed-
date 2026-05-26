@@ -4,16 +4,13 @@ Busca externa via Tavily quando o corpus FIA não tem a resposta.
 Chamado pelo orquestrador quando o Retriever retorna fallback=True.
 """
 
-import os
 import time
 from datetime import datetime, timezone
 
 from tavily import TavilyClient
 
 from agents._retry import external_call_retry
-
-
-DEFAULT_MAX_RESULTS = 5
+from config import TAVILY_API_KEY, TAVILY_MAX_RESULTS
 
 
 @external_call_retry
@@ -34,8 +31,8 @@ def search_web(state: dict) -> dict:
     if not query:
         raise ValueError("State inválido: informe 'query_reformulada' ou 'query_original'.")
 
-    api_key = os.getenv("TAVILY_API_KEY")
-    max_results = int(os.getenv("TAVILY_MAX_RESULTS", str(DEFAULT_MAX_RESULTS)))
+    api_key = TAVILY_API_KEY
+    max_results = TAVILY_MAX_RESULTS
 
     erro = None
     resultados = []

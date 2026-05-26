@@ -5,7 +5,6 @@ e/ou contexto da web (Web Searcher), com aviso de baixa confiança
 quando necessário.
 """
 
-import os
 import time
 from datetime import datetime, timezone
 
@@ -13,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 
 from agents._retry import external_call_retry
+from config import LLM_MODEL, OLLAMA_BASE_URL
 from prompts import load_prompt
 
 
@@ -68,8 +68,8 @@ def generate(state: dict) -> dict:
     query_original, query_reformulada, corpus_context, web_context, low_confidence, confidence_warning = _build_contexts(state)
 
     llm = ChatOllama(
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        model=os.getenv("LLM_MODEL", "llama3.1:8b"),
+        base_url=OLLAMA_BASE_URL,
+        model=LLM_MODEL,
         temperature=0.0,
     )
 

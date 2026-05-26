@@ -26,11 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import chromadb  # noqa: E402
 import ollama  # noqa: E402
 
-from dados.ingestion import EMBED_MODEL, process_single_pdf  # noqa: E402
+from config import CHROMA_COLLECTION, EMBED_MODEL  # noqa: E402
+from dados.ingestion import process_single_pdf  # noqa: E402
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
 VECTORSTORE = Path(__file__).parent / "vectorstore"
-COLLECTION = "fia_2026_regulations"
+COLLECTION = CHROMA_COLLECTION
 
 
 def _default_max_workers(n_pdfs: int) -> int:

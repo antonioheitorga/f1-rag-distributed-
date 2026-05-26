@@ -6,14 +6,20 @@ Verifica a integridade do ChromaDB após a ingestão.
   - Confirma que embeddings e metadados estão corretos
 """
 
-import ollama
-import chromadb
+import sys
 from pathlib import Path
-from collections import Counter
+
+# Adiciona raiz do projeto ao path para encontrar config.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+import ollama  # noqa: E402
+import chromadb  # noqa: E402
+from collections import Counter  # noqa: E402
+
+from config import CHROMA_COLLECTION, EMBED_MODEL  # noqa: E402
 
 VECTORSTORE = Path(__file__).parent.parent / "vectorstore"
-COLLECTION  = "fia_2026_regulations"
-EMBED_MODEL = "nomic-embed-text"
+COLLECTION = CHROMA_COLLECTION
 
 # Consultas de teste representativas do domínio FIA
 TEST_QUERIES = [

@@ -21,42 +21,43 @@ class _FakeClient:
         return _FakeCollection(self._query_result)
 
 
+def _patch_imports(query_result, embedding):
+    """Helper que constrói o side_effect para mock_import."""
+    real_import = __import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "chromadb":
+            class _FakeChromadb:
+                @staticmethod
+                def PersistentClient(path):
+                    _ = path
+                    return _FakeClient(query_result)
+            return _FakeChromadb
+        if name == "ollama":
+            class _FakeOllama:
+                @staticmethod
+                def embeddings(model, prompt):
+                    _ = model
+                    _ = prompt
+                    return {"embedding": embedding}
+            return _FakeOllama
+        return real_import(name, *args, **kwargs)
+
+    return _fake_import
+
+
 @patch("agents.retriever.Path.exists", return_value=True)
+@patch("agents.retriever.CHROMA_COLLECTION", "fia_2026_regulations")
+@patch("agents.retriever.RETRIEVER_TOP_K", 5)
+@patch("agents.retriever.RETRIEVER_THRESHOLD", 0.5)
 def test_retrieve_estrutura_saida(_mock_exists):
     query_result = {
         "documents": [["doc A", "doc B"]],
         "metadatas": [[{"section": "A"}, {"section": "B"}]],
         "distances": [[0.1, 0.4]],  # scores: 0.9, 0.6
     }
-    with patch("builtins.__import__") as mock_import, patch("agents.retriever.os.getenv") as getenv:
-        real_import = __import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "chromadb":
-                class _FakeChromadb:
-                    @staticmethod
-                    def PersistentClient(path):
-                        _ = path
-                        return _FakeClient(query_result)
-                return _FakeChromadb
-            if name == "ollama":
-                class _FakeOllama:
-                    @staticmethod
-                    def embeddings(model, prompt):
-                        _ = model
-                        _ = prompt
-                        return {"embedding": [0.01, 0.02, 0.03]}
-                return _FakeOllama
-            return real_import(name, *args, **kwargs)
-
-        mock_import.side_effect = _fake_import
-        getenv.side_effect = lambda k, d=None: {
-            "RETRIEVER_THRESHOLD": "0.5",
-            "RETRIEVER_TOP_K": "5",
-            "CHROMA_COLLECTION": "fia_2026_regulations",
-            "EMBED_MODEL": "nomic-embed-text",
-        }.get(k, d)
-
+    with patch("builtins.__import__") as mock_import:
+        mock_import.side_effect = _patch_imports(query_result, [0.01, 0.02, 0.03])
         result = retrieve({"query_reformulada": "DRS rules"})
 
     assert "retriever_result" in result
@@ -80,39 +81,16 @@ def test_retrieve_estrutura_saida(_mock_exists):
 
 
 @patch("agents.retriever.Path.exists", return_value=True)
+@patch("agents.retriever.RETRIEVER_TOP_K", 5)
+@patch("agents.retriever.RETRIEVER_THRESHOLD", 0.7)
 def test_retrieve_aplica_threshold(_mock_exists):
     query_result = {
         "documents": [["doc A", "doc B"]],
         "metadatas": [[{"section": "A"}, {"section": "B"}]],
         "distances": [[0.2, 0.8]],  # scores: 0.8, 0.2
     }
-    with patch("builtins.__import__") as mock_import, patch("agents.retriever.os.getenv") as getenv:
-        real_import = __import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "chromadb":
-                class _FakeChromadb:
-                    @staticmethod
-                    def PersistentClient(path):
-                        _ = path
-                        return _FakeClient(query_result)
-                return _FakeChromadb
-            if name == "ollama":
-                class _FakeOllama:
-                    @staticmethod
-                    def embeddings(model, prompt):
-                        _ = model
-                        _ = prompt
-                        return {"embedding": [0.11, 0.22]}
-                return _FakeOllama
-            return real_import(name, *args, **kwargs)
-
-        mock_import.side_effect = _fake_import
-        getenv.side_effect = lambda k, d=None: {
-            "RETRIEVER_THRESHOLD": "0.7",
-            "RETRIEVER_TOP_K": "5",
-        }.get(k, d)
-
+    with patch("builtins.__import__") as mock_import:
+        mock_import.side_effect = _patch_imports(query_result, [0.11, 0.22])
         result = retrieve({"query_original": "engine regulations"})
 
     rr = result["retriever_result"]
@@ -126,6 +104,8 @@ def test_retrieve_aplica_threshold(_mock_exists):
 
 
 @patch("agents.retriever.Path.exists", return_value=True)
+@patch("agents.retriever.RETRIEVER_TOP_K", 3)
+@patch("agents.retriever.RETRIEVER_THRESHOLD", 0.1)
 def test_retrieve_appenda_trace_existente(_mock_exists):
     query_result = {
         "documents": [["doc X"]],
@@ -140,33 +120,8 @@ def test_retrieve_appenda_trace_existente(_mock_exists):
         "latencia_ms": 12,
     }]
 
-    with patch("builtins.__import__") as mock_import, patch("agents.retriever.os.getenv") as getenv:
-        real_import = __import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "chromadb":
-                class _FakeChromadb:
-                    @staticmethod
-                    def PersistentClient(path):
-                        _ = path
-                        return _FakeClient(query_result)
-                return _FakeChromadb
-            if name == "ollama":
-                class _FakeOllama:
-                    @staticmethod
-                    def embeddings(model, prompt):
-                        _ = model
-                        _ = prompt
-                        return {"embedding": [0.5, 0.6]}
-                return _FakeOllama
-            return real_import(name, *args, **kwargs)
-
-        mock_import.side_effect = _fake_import
-        getenv.side_effect = lambda k, d=None: {
-            "RETRIEVER_THRESHOLD": "0.1",
-            "RETRIEVER_TOP_K": "3",
-        }.get(k, d)
-
+    with patch("builtins.__import__") as mock_import:
+        mock_import.side_effect = _patch_imports(query_result, [0.5, 0.6])
         result = retrieve({
             "query_reformulada": "en query",
             "trace": trace_anterior,
@@ -178,6 +133,8 @@ def test_retrieve_appenda_trace_existente(_mock_exists):
 
 
 @patch("agents.retriever.Path.exists", return_value=True)
+@patch("agents.retriever.RETRIEVER_TOP_K", 3)
+@patch("agents.retriever.RETRIEVER_THRESHOLD", 0.7)
 def test_retrieve_aciona_fallback_quando_best_score_abaixo_threshold(_mock_exists):
     query_result = {
         "documents": [["doc low"]],
@@ -185,33 +142,8 @@ def test_retrieve_aciona_fallback_quando_best_score_abaixo_threshold(_mock_exist
         "distances": [[0.35]],  # score: 0.65
     }
 
-    with patch("builtins.__import__") as mock_import, patch("agents.retriever.os.getenv") as getenv:
-        real_import = __import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "chromadb":
-                class _FakeChromadb:
-                    @staticmethod
-                    def PersistentClient(path):
-                        _ = path
-                        return _FakeClient(query_result)
-                return _FakeChromadb
-            if name == "ollama":
-                class _FakeOllama:
-                    @staticmethod
-                    def embeddings(model, prompt):
-                        _ = model
-                        _ = prompt
-                        return {"embedding": [0.9, 0.1]}
-                return _FakeOllama
-            return real_import(name, *args, **kwargs)
-
-        mock_import.side_effect = _fake_import
-        getenv.side_effect = lambda k, d=None: {
-            "RETRIEVER_THRESHOLD": "0.7",
-            "RETRIEVER_TOP_K": "3",
-        }.get(k, d)
-
+    with patch("builtins.__import__") as mock_import:
+        mock_import.side_effect = _patch_imports(query_result, [0.9, 0.1])
         result = retrieve({"query_original": "fallback case"})
 
     rr = result["retriever_result"]
@@ -224,6 +156,8 @@ def test_retrieve_aciona_fallback_quando_best_score_abaixo_threshold(_mock_exist
 
 
 @patch("agents.retriever.Path.exists", return_value=True)
+@patch("agents.retriever.RETRIEVER_TOP_K", 3)
+@patch("agents.retriever.RETRIEVER_THRESHOLD", 0.7)
 def test_retrieve_sem_resultados_define_best_score_zero_e_fallback_true(_mock_exists):
     query_result = {
         "documents": [[]],
@@ -231,33 +165,8 @@ def test_retrieve_sem_resultados_define_best_score_zero_e_fallback_true(_mock_ex
         "distances": [[]],
     }
 
-    with patch("builtins.__import__") as mock_import, patch("agents.retriever.os.getenv") as getenv:
-        real_import = __import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "chromadb":
-                class _FakeChromadb:
-                    @staticmethod
-                    def PersistentClient(path):
-                        _ = path
-                        return _FakeClient(query_result)
-                return _FakeChromadb
-            if name == "ollama":
-                class _FakeOllama:
-                    @staticmethod
-                    def embeddings(model, prompt):
-                        _ = model
-                        _ = prompt
-                        return {"embedding": [0.2, 0.8]}
-                return _FakeOllama
-            return real_import(name, *args, **kwargs)
-
-        mock_import.side_effect = _fake_import
-        getenv.side_effect = lambda k, d=None: {
-            "RETRIEVER_THRESHOLD": "0.7",
-            "RETRIEVER_TOP_K": "3",
-        }.get(k, d)
-
+    with patch("builtins.__import__") as mock_import:
+        mock_import.side_effect = _patch_imports(query_result, [0.2, 0.8])
         result = retrieve({"query_original": "no hits case"})
 
     rr = result["retriever_result"]

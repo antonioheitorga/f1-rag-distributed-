@@ -25,6 +25,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import boto3  # noqa: E402
 
+from config import (  # noqa: E402
+    AWS_ENDPOINT_URL,
+    CHROMA_COLLECTION,
+    SQS_POLL_WAIT_SECONDS,
+    SQS_QUEUE_NAME,
+    SQS_VISIBILITY_TIMEOUT,
+    WORKER_IDLE_TIMEOUT_SEC,
+)
 from dados.ingestion import process_single_pdf  # noqa: E402
 from infra.metrics import emit_metric  # noqa: E402
 
@@ -32,13 +40,10 @@ from infra.metrics import emit_metric  # noqa: E402
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
 VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
 
-SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "ingestion-jobs")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
-COLLECTION = os.getenv("CHROMA_COLLECTION", "fia_2026_regulations")
-
-POLL_WAIT_SECONDS = int(os.getenv("SQS_POLL_WAIT_SECONDS", "20"))
-VISIBILITY_TIMEOUT = int(os.getenv("SQS_VISIBILITY_TIMEOUT", "600"))
-IDLE_TIMEOUT_SEC = int(os.getenv("WORKER_IDLE_TIMEOUT_SEC", "0"))
+COLLECTION = CHROMA_COLLECTION
+POLL_WAIT_SECONDS = SQS_POLL_WAIT_SECONDS
+VISIBILITY_TIMEOUT = SQS_VISIBILITY_TIMEOUT
+IDLE_TIMEOUT_SEC = WORKER_IDLE_TIMEOUT_SEC
 
 WORKER_ID = f"{socket.gethostname()}#{os.getpid()}"
 

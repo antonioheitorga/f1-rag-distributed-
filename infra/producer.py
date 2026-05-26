@@ -14,7 +14,6 @@ Uso:
 """
 
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,17 +23,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import boto3  # noqa: E402
 import chromadb  # noqa: E402
 
+from config import (  # noqa: E402
+    AWS_ENDPOINT_URL,
+    CHROMA_COLLECTION,
+    SQS_DLQ_NAME,
+    SQS_MAX_RECEIVE_COUNT,
+    SQS_QUEUE_NAME,
+    SQS_VISIBILITY_TIMEOUT,
+)
 from infra.metrics import emit_metric  # noqa: E402
 
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
 VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
-
-SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "ingestion-jobs")
-SQS_DLQ_NAME = os.getenv("SQS_DLQ_NAME", f"{SQS_QUEUE_NAME}-dlq")
-SQS_MAX_RECEIVE_COUNT = int(os.getenv("SQS_MAX_RECEIVE_COUNT", "3"))
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
-COLLECTION = os.getenv("CHROMA_COLLECTION", "fia_2026_regulations")
+COLLECTION = CHROMA_COLLECTION
 
 
 def _get_or_create_dlq(sqs) -> tuple[str, str]:
@@ -66,7 +68,7 @@ def _get_or_create_main_queue(sqs, dlq_arn: str) -> str:
         "maxReceiveCount": SQS_MAX_RECEIVE_COUNT,
     })
     attributes = {
-        "VisibilityTimeout": os.getenv("SQS_VISIBILITY_TIMEOUT", "600"),
+        "VisibilityTimeout": str(SQS_VISIBILITY_TIMEOUT),
         "MessageRetentionPeriod": "86400",  # 1 dia
         "RedrivePolicy": redrive_policy,
     }

@@ -4,40 +4,39 @@ Realiza busca vetorial no ChromaDB usando a query reformulada
 e retorna resultados filtrados por limiar de relevância.
 """
 
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from agents._retry import external_call_retry
-
-
-DEFAULT_COLLECTION = "fia_2026_regulations"
-DEFAULT_TOP_K = 5
-DEFAULT_THRESHOLD = 0.75
+from config import (
+    CHROMA_COLLECTION,
+    CHROMA_PERSIST_DIR,
+    EMBED_MODEL,
+    RETRIEVER_THRESHOLD,
+    RETRIEVER_TOP_K,
+)
 
 
 def _vectorstore_path() -> Path:
     """Resolve caminho do vectorstore persistente.
 
-    Prioriza a variável de ambiente CHROMA_PERSIST_DIR (necessária em
-    deploys distribuídos onde o path difere entre instâncias). Caso
-    ausente, usa o path padrão relativo à raiz do projeto.
+    Prioriza CHROMA_PERSIST_DIR do config (necessária em deploys distribuídos
+    onde o path difere entre instâncias). Caso ausente, usa o path padrão
+    relativo à raiz do projeto.
     """
-    chroma_dir = os.getenv("CHROMA_PERSIST_DIR")
-    if chroma_dir:
-        return Path(chroma_dir)
+    if CHROMA_PERSIST_DIR:
+        return Path(CHROMA_PERSIST_DIR)
     base_dir = Path(__file__).resolve().parent.parent
     return base_dir / "dados" / "vectorstore"
 
 
 @external_call_retry
 def _embed_query(query: str) -> list[float]:
-    """Gera embedding da query usando modelo configurado no .env."""
+    """Gera embedding da query usando o EMBED_MODEL central."""
     import ollama
 
-    embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text")
-    response = ollama.embeddings(model=embed_model, prompt=query)
+    response = ollama.embeddings(model=EMBED_MODEL, prompt=query)
     return response["embedding"]
 
 
@@ -53,9 +52,9 @@ def retrieve(state: dict) -> dict:
     if not query:
         raise ValueError("State inválido: informe 'query_reformulada' ou 'query_original'.")
 
-    threshold = float(os.getenv("RETRIEVER_THRESHOLD", str(DEFAULT_THRESHOLD)))
-    top_k = int(os.getenv("RETRIEVER_TOP_K", str(DEFAULT_TOP_K)))
-    collection_name = os.getenv("CHROMA_COLLECTION", DEFAULT_COLLECTION)
+    threshold = RETRIEVER_THRESHOLD
+    top_k = RETRIEVER_TOP_K
+    collection_name = CHROMA_COLLECTION
 
     vectorstore_path = _vectorstore_path()
     if not vectorstore_path.exists():

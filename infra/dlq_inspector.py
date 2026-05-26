@@ -13,7 +13,6 @@ Uso:
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -21,9 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import boto3  # noqa: E402
 
-
-SQS_DLQ_NAME = os.getenv("SQS_DLQ_NAME", "ingestion-jobs-dlq")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+from config import AWS_ENDPOINT_URL, SQS_DLQ_NAME  # noqa: E402
 
 
 def _resolve_dlq(sqs) -> str:

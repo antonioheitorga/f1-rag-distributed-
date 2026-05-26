@@ -9,7 +9,6 @@ sem LLM.
 """
 
 import json
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +20,7 @@ from agents.generator import generate
 from agents.reformulator import reformulate
 from agents.retriever import retrieve
 from agents.web_searcher import search_web
+from config import TRACES_DIR
 
 
 class GraphState(TypedDict, total=False):
@@ -109,7 +109,7 @@ def run(query_original: str, session_id: str | None = None) -> dict:
 
 def _export_trace(state: GraphState, session_id: str) -> None:
     """Persiste o trace da execução em traces/{session_id}.json."""
-    traces_dir = Path(os.getenv("TRACES_DIR", "./traces"))
+    traces_dir = Path(TRACES_DIR)
     traces_dir.mkdir(parents=True, exist_ok=True)
 
     payload = {

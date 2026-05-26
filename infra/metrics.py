@@ -19,14 +19,20 @@ Uso:
 import logging
 import os
 import socket
+import sys
+from pathlib import Path
 from typing import Optional
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+# Adiciona raiz do projeto ao path quando rodado fora do worker
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import boto3  # noqa: E402
+from botocore.exceptions import BotoCoreError, ClientError  # noqa: E402
+
+from config import AWS_ENDPOINT_URL, CLOUDWATCH_NAMESPACE  # noqa: E402
 
 
-NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "F1RagHarness")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
+NAMESPACE = CLOUDWATCH_NAMESPACE
 WORKER_ID = f"{socket.gethostname()}#{os.getpid()}"
 
 logger = logging.getLogger("f1rag.metrics")

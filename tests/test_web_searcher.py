@@ -1,6 +1,5 @@
 """Smoke tests do Agente Web Searcher."""
 
-import os
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +7,7 @@ import pytest
 from agents.web_searcher import search_web
 
 
-@patch.dict(os.environ, {"TAVILY_API_KEY": "fake-key"})
+@patch("agents.web_searcher.TAVILY_API_KEY", "fake-key")
 @patch("agents.web_searcher.TavilyClient")
 def test_search_web_com_resultados(mock_client_cls):
     """Tavily retorna resultados — encontrou=True, lista preenchida."""
@@ -31,7 +30,7 @@ def test_search_web_com_resultados(mock_client_cls):
     assert "2 resultados" in result["trace"][0]["saida"]
 
 
-@patch.dict(os.environ, {"TAVILY_API_KEY": "fake-key"})
+@patch("agents.web_searcher.TAVILY_API_KEY", "fake-key")
 @patch("agents.web_searcher.TavilyClient")
 def test_search_web_sem_resultados(mock_client_cls):
     """Tavily retorna lista vazia — encontrou=False."""
@@ -44,7 +43,7 @@ def test_search_web_sem_resultados(mock_client_cls):
     assert result["web_result"]["resultados"] == []
 
 
-@patch.dict(os.environ, {"TAVILY_API_KEY": "fake-key"})
+@patch("agents.web_searcher.TAVILY_API_KEY", "fake-key")
 @patch("agents.web_searcher.TavilyClient")
 def test_search_web_erro_api(mock_client_cls):
     """Erro da API Tavily — encontrou=False, erro registrado no trace."""
@@ -59,7 +58,7 @@ def test_search_web_erro_api(mock_client_cls):
     assert "network down" in result["trace"][0]["saida"]
 
 
-@patch.dict(os.environ, {}, clear=True)
+@patch("agents.web_searcher.TAVILY_API_KEY", None)
 def test_search_web_sem_api_key():
     """Sem TAVILY_API_KEY — não tenta chamar a API, registra erro no trace."""
     result = search_web({"query_reformulada": "qualquer query"})
@@ -74,10 +73,10 @@ def test_search_web_state_invalido():
         search_web({})
 
 
+@patch("agents.web_searcher.TAVILY_API_KEY", None)
 def test_search_web_usa_query_original_se_reformulada_ausente():
     """Sem query_reformulada, usa query_original como fallback."""
-    with patch.dict(os.environ, {}, clear=True):
-        result = search_web({"query_original": "fallback query"})
+    result = search_web({"query_original": "fallback query"})
 
     assert result["trace"][0]["entrada"] == "fallback query"
 

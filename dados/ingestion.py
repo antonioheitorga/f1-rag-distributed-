@@ -35,11 +35,15 @@ MIN_CHARS_PER_PAGE = 100
 WARN_EMPTY_RATIO = 0.10
 
 # Chunking
+# Os defaults vêm do config.py (CHUNK_SIZE, CHUNK_OVERLAP). BEST_CHUNK_CONFIG
+# permanece como dict pra preservar a API de chunk_data(chunk_size, chunk_overlap)
+# que aceita override por chamada.
+from config import CHUNK_OVERLAP, CHUNK_SIZE, EMBED_MODEL  # noqa: E402
+
 CHUNK_SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
-BEST_CHUNK_CONFIG = {"chunk_size": 512, "chunk_overlap": 64}
+BEST_CHUNK_CONFIG = {"chunk_size": CHUNK_SIZE, "chunk_overlap": CHUNK_OVERLAP}
 
 # Embedding
-EMBED_MODEL = "nomic-embed-text"
 EMBED_BATCH_SIZE = 32
 MIN_CHUNK_CHARS = 30  # ignora chunks muito curtos (marcadores de página)
 

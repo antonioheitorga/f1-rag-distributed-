@@ -12,7 +12,6 @@ Uso:
 """
 
 import argparse
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,9 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import boto3  # noqa: E402
 
+from config import AWS_ENDPOINT_URL, CLOUDWATCH_NAMESPACE  # noqa: E402
 
-NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "F1RagHarness")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
+NAMESPACE = CLOUDWATCH_NAMESPACE
 
 
 def _list_metrics(cw, metric_name: str | None = None) -> list[dict]:

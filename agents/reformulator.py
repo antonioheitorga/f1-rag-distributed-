@@ -4,7 +4,6 @@ Reescreve a query original do usuário para otimizar a busca semântica
 no corpus de regulamentos da FIA F1 2026.
 """
 
-import os
 import time
 from datetime import datetime, timezone
 
@@ -12,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 
 from agents._retry import external_call_retry
+from config import LLM_MODEL, OLLAMA_BASE_URL
 from prompts import load_prompt
 
 
@@ -32,8 +32,8 @@ def reformulate(state: dict) -> dict:
     query_original = state["query_original"]
 
     llm = ChatOllama(
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        model=os.getenv("LLM_MODEL", "llama3.1:8b"),
+        base_url=OLLAMA_BASE_URL,
+        model=LLM_MODEL,
         temperature=0.0,
     )
     chain = ChatPromptTemplate.from_template(load_prompt("reformulator")) | llm
