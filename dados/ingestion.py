@@ -286,7 +286,7 @@ def process_single_pdf(
     chunks_for_ingest = build_chunks_for_ingest(chunked)
 
     client = chromadb.PersistentClient(path=str(vectorstore_path))
-    collection = client.get_collection(collection_name)
+    collection = client.get_or_create_collection(collection_name)
     inserted = ingest_chunks(collection, chunks_for_ingest)
 
     return {
