@@ -26,7 +26,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 
 NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "F1RagHarness")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
 WORKER_ID = f"{socket.gethostname()}#{os.getpid()}"
 
 logger = logging.getLogger("f1rag.metrics")

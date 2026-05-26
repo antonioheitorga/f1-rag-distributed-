@@ -33,7 +33,7 @@ CORPUS_DIR = Path(__file__).resolve().parent.parent / "dados" / "corpus"
 VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
 
 SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "ingestion-jobs")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
 COLLECTION = os.getenv("CHROMA_COLLECTION", "fia_2026_regulations")
 
 POLL_WAIT_SECONDS = int(os.getenv("SQS_POLL_WAIT_SECONDS", "20"))

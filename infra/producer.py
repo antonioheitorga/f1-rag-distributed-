@@ -33,7 +33,7 @@ VECTORSTORE = Path(__file__).resolve().parent.parent / "dados" / "vectorstore"
 SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "ingestion-jobs")
 SQS_DLQ_NAME = os.getenv("SQS_DLQ_NAME", f"{SQS_QUEUE_NAME}-dlq")
 SQS_MAX_RECEIVE_COUNT = int(os.getenv("SQS_MAX_RECEIVE_COUNT", "3"))
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
 COLLECTION = os.getenv("CHROMA_COLLECTION", "fia_2026_regulations")
 
 
