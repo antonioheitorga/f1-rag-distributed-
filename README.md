@@ -393,6 +393,27 @@ print('Todos os módulos importam sem erro.')
 "
 ```
 
+### Wrappers de teste e deploy
+
+Para conveniência, o diretório `scripts/` tem dois wrappers shell que encapsulam os comandos mais usados:
+
+```bash
+# Testes
+scripts/test.sh                # suite padrão (24 unitários)
+scripts/test.sh integration    # só integração
+scripts/test.sh all            # tudo (29 testes)
+scripts/test.sh smoke          # smoke test de imports
+scripts/test.sh verbose        # suite padrão em modo verbose
+
+# Deploy AWS
+scripts/deploy.sh up           # provisiona com 3 workers (default)
+scripts/deploy.sh up 1         # provisiona com 1 worker
+scripts/deploy.sh plan         # mostra o plano sem aplicar
+scripts/deploy.sh down         # destrói tudo
+```
+
+Os wrappers chamam `pytest` e `terraform` por baixo. Use os comandos diretos se precisar controle fino.
+
 ### Como adicionar um novo teste
 
 Testes unitários novos não precisam de marker. Vão direto pra suite padrão:
