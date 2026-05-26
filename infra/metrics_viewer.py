@@ -23,7 +23,7 @@ import boto3  # noqa: E402
 
 
 NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "F1RagHarness")
-AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL") or None
 
 
 def _list_metrics(cw, metric_name: str | None = None) -> list[dict]:
