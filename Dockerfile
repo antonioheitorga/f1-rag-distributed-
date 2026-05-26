@@ -23,15 +23,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia o restante do código (depois do install para não invalidar cache)
 COPY . .
 
-# Variáveis de ambiente default — sobrescritas via docker-compose
+# Variáveis de ambiente default — sobrescritas via docker-compose ou docker run
+# AWS_* removidas: defaults agressivos (AWS_ENDPOINT_URL apontando pra LocalStack,
+# credenciais "test") vazavam em deploy AWS real e sobrepunham IAM Role.
+# Quem precisa dessas envs (compose dev local, user_data EC2) passa explicitamente.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     OLLAMA_BASE_URL=http://harness-rag-ollama:11434 \
     OLLAMA_HOST=http://harness-rag-ollama:11434 \
-    AWS_ENDPOINT_URL=http://harness-rag-localstack:4566 \
-    AWS_DEFAULT_REGION=us-east-1 \
-    AWS_ACCESS_KEY_ID=test \
-    AWS_SECRET_ACCESS_KEY=test
+    AWS_DEFAULT_REGION=us-east-1
 
 # Notas sobre as duas vars do Ollama:
 # - OLLAMA_BASE_URL: lido por langchain (ChatOllama no agents/generator.py)

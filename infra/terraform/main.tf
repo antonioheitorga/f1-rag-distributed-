@@ -37,7 +37,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-jammy-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
@@ -82,78 +82,16 @@ resource "aws_sqs_queue" "main" {
 }
 
 # ----------------------------------------------------------------------------
-# IAM — Role assumida pelas EC2
+# IAM — Instance Profile (usando o pré-criado do AWS Academy)
 # ----------------------------------------------------------------------------
-# EC2 precisa autenticar com a AWS pra chamar SQS e CloudWatch. Em vez de
-# colocar AWS_ACCESS_KEY_ID nos workers (inseguro), criamos um IAM Role e
-# anexamos à EC2 via Instance Profile. Boto3 detecta o Instance Metadata
-# Service automaticamente e usa essas credenciais temporárias.
-
-resource "aws_iam_role" "worker" {
-  name = "${var.project_name}-worker-role"
-
-  # Política de "quem pode assumir esse role" — só o serviço EC2.
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-    }]
-  })
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-# Política inline — define o que o role PODE fazer.
-# Princípio do menor privilégio: só SQS na nossa fila específica + CloudWatch metrics.
-
-resource "aws_iam_role_policy" "worker" {
-  name = "${var.project_name}-worker-policy"
-  role = aws_iam_role.worker.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "sqs:ReceiveMessage",
-          "sqs:DeleteMessage",
-          "sqs:GetQueueAttributes",
-          "sqs:GetQueueUrl",
-          "sqs:ListQueues",
-          "sqs:SendMessage", # producer também roda dessa permissão (se for invocado de uma EC2)
-        ]
-        Resource = [
-          aws_sqs_queue.main.arn,
-          aws_sqs_queue.dlq.arn,
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "cloudwatch:PutMetricData",
-          "cloudwatch:ListMetrics",
-          "cloudwatch:GetMetricStatistics",
-        ]
-        Resource = "*" # CloudWatch PutMetricData não suporta ARN específico
-      },
-    ]
-  })
-}
-
-# Instance Profile é o "embrulho" do role que pode ser anexado à EC2.
-# Sem isso, a EC2 não consegue usar o role (mesmo o role existindo).
-
-resource "aws_iam_instance_profile" "worker" {
-  name = "${var.project_name}-worker-profile"
-  role = aws_iam_role.worker.name
-}
+# A role `voclabs` do Academy não tem permissão pra criar IAM Roles novos
+# (iam:CreateRole é bloqueado). Em vez disso, reutilizamos o `LabInstanceProfile`
+# pré-criado pela infra do Academy — ele já vem com permissões pra SQS,
+# CloudWatch, EC2 e outros serviços essenciais.
+#
+# Trade-off: perdemos o princípio do menor privilégio (o LabInstanceProfile
+# tem mais permissões que precisamos). Em produção real, criaríamos o role
+# customizado. Aqui é restrição do ambiente Academy.
 
 # ----------------------------------------------------------------------------
 # Networking — Security Group
@@ -212,7 +150,7 @@ resource "aws_instance" "worker" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.worker.id]
-  iam_instance_profile   = aws_iam_instance_profile.worker.name
+  iam_instance_profile   = "LabInstanceProfile"
   key_name               = aws_key_pair.worker.key_name
 
   # Script que roda no primeiro boot. Lê o arquivo user_data.sh,

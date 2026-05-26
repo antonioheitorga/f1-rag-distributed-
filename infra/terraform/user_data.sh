@@ -52,7 +52,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 systemctl enable ollama
 systemctl start ollama
 
-# Aguarda Ollama ficar pronto antes de pull do modelo
+# Aguarda Ollama HTTP API ficar pronta.
 for i in {1..30}; do
     if curl -s http://localhost:11434/ > /dev/null; then
         break
@@ -60,8 +60,21 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Baixa modelo de embedding (~274 MB)
-ollama pull nomic-embed-text
+# Pull do modelo via API HTTP — bypass do CLI que tem bug de panic
+# em envconfig.Models() quando HOME não está setado no contexto do cloud-init.
+# A API HTTP é servida pelo systemd service (que tem env correto).
+echo "Iniciando pull do nomic-embed-text via API HTTP..."
+curl -X POST http://localhost:11434/api/pull \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"nomic-embed-text"}' \
+    --no-buffer
+
+# Valida que o modelo foi baixado consultando /api/tags.
+if ! curl -s http://localhost:11434/api/tags | grep -q nomic-embed-text; then
+    echo "ERRO: modelo nomic-embed-text não foi baixado"
+    exit 1
+fi
+echo "Modelo nomic-embed-text disponivel."
 
 # ----------------------------------------------------------------------------
 # 4. Clona o repo e prepara o worker
