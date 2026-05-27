@@ -189,37 +189,287 @@ Tempo medido: **~60s** com 3 workers locais.
 
 ### Modo 4 — Distribuído em AWS real (EC2 + SQS + CloudWatch)
 
-Mesmo código do Modo 3 mas rodando em EC2 reais provisionadas via Terraform. Workers ficam em hosts independentes, cada um com seu Ollama dedicado, eliminando a contenção do Modo 2.
+Versão resumida: provisiona 3 EC2 t3.medium via Terraform, publica jobs em SQS real, workers consomem em paralelo e emitem métricas no CloudWatch. Para deploy completo passo a passo, ver **Tutorial AWS Academy** logo abaixo.
+
+Comandos básicos (assumindo lab Academy ativo e credenciais exportadas):
 
 ```bash
-# 1. Iniciar lab AWS Academy e exportar credenciais no PowerShell
-$env:AWS_ACCESS_KEY_ID="..."
-$env:AWS_SECRET_ACCESS_KEY="..."
-$env:AWS_SESSION_TOKEN="..."
-$env:AWS_DEFAULT_REGION="us-east-1"
-
-# 2. Provisionar 3 EC2 t3.medium + SQS + DLQ
 cd infra/terraform
 terraform init
 terraform apply -var "worker_count=3"
+# Aguardar ~5 min do bootstrap das EC2
 
-# 3. Aguardar ~5 min do user_data.sh bootstrapar Docker, Ollama e worker
-ssh -i ~/.ssh/id_ed25519 ubuntu@<worker_ip> "tail -f /var/log/cloud-init-output.log"
-
-# 4. Publicar 6 jobs na SQS real (executar localmente)
-Remove-Item Env:AWS_ENDPOINT_URL -ErrorAction SilentlyContinue
+# Voltar para a raiz, limpar ENV de LocalStack e publicar jobs
+cd ../..
 python infra/producer.py
 
-# 5. Acompanhar processamento via metrics_viewer
+# Acompanhar via CloudWatch
 python infra/metrics_viewer.py --window 10
 
-# 6. Destruir tudo após validar
+# Limpar
+cd infra/terraform
 terraform destroy
 ```
 
-Manual completo de operação Terraform em `infra/terraform/README.md`.
+Tempo medido (Sessão de validação): **~24 min agregados** para 4288 chunks em 3 workers t3.medium CPU.
 
-Tempo medido (Sessão de validação): **~24 min agregados** para 3127 chunks em 3 workers t3.medium CPU.
+---
+
+## Tutorial AWS Academy passo a passo
+
+Esta seção descreve, do zero, como subir o projeto na AWS real usando o AWS Academy Learner Lab. Foi escrita após duas sessões de validação onde encontramos várias armadilhas, e está organizada para que qualquer pessoa consiga reproduzir sem precisar entender Terraform ou AWS profundamente.
+
+**Tempo total estimado:** 45 minutos (10 min de setup, 5 min de provisionamento, 25 min de execução e validação, 5 min de destruição).
+
+### Etapa 1. Pré-requisitos locais (uma vez por máquina)
+
+Você precisa de três ferramentas instaladas: AWS CLI, Terraform e uma chave SSH. Se já tem, pule para a Etapa 2.
+
+**1.1 Instalar AWS CLI (Windows via winget):**
+
+```powershell
+winget install Amazon.AWSCLI
+```
+
+No macOS: `brew install awscli`. No Linux: `sudo apt install awscli` ou via pip.
+
+**1.2 Instalar Terraform (Windows via winget):**
+
+```powershell
+winget install Hashicorp.Terraform
+```
+
+No macOS: `brew install terraform`. No Linux: ver instruções oficiais HashiCorp.
+
+**1.3 Validar PATH (Windows):**
+
+O winget às vezes instala os binários sem adicionar ao PATH global. Em cada nova janela do PowerShell, adicione manualmente:
+
+```powershell
+$env:PATH += ";C:\Program Files\Amazon\AWSCLIV2;$env:USERPROFILE\AppData\Local\Microsoft\WinGet\Packages\Hashicorp.Terraform_Microsoft.Winget.Source_8wekyb3d8bbwe"
+```
+
+Para tornar permanente, adicione esses caminhos via **Sistema → Variáveis de Ambiente** no Windows.
+
+**1.4 Gerar par de chaves SSH (se ainda não tiver):**
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.ssh" | Out-Null
+ssh-keygen -t ed25519 -C "harness-rag" -f "$env:USERPROFILE\.ssh\id_ed25519" -N '""'
+```
+
+Isso cria `~/.ssh/id_ed25519` (chave privada) e `~/.ssh/id_ed25519.pub` (chave pública). O Terraform vai registrar a chave pública na AWS automaticamente.
+
+### Etapa 2. Iniciar o lab AWS Academy
+
+**2.1** Faça login no AWS Academy: https://awsacademy.instructure.com/
+
+**2.2** Vá em **Courses → AWS Academy Learner Lab → Modules → Learner Lab**.
+
+**2.3** Clique no botão **Start Lab**. Aguarde o indicador no topo da página mudar de vermelho (parando) para amarelo (iniciando) para verde (pronto). Isso leva ~3 minutos.
+
+**2.4** Clique em **AWS Details** no topo da página. Vai abrir um painel com:
+- AWS CLI: bloco contendo as credenciais
+- SSH key: chave do ambiente (não precisamos, usamos a nossa)
+
+Clique em **Show** ao lado de **AWS CLI**. Vai aparecer algo como:
+
+```
+[default]
+aws_access_key_id=ASIA...
+aws_secret_access_key=...
+aws_session_token=...
+```
+
+**2.5** Copie esse bloco inteiro. Vamos usar na próxima etapa.
+
+**Aviso importante:** as credenciais expiram após algumas horas, mesmo com o lab rodando. Se receber erro `InvalidClientTokenId`, volte aqui e re-copie.
+
+### Etapa 3. Configurar credenciais no terminal
+
+Abra um PowerShell e cole as credenciais como variáveis de ambiente:
+
+```powershell
+$env:AWS_ACCESS_KEY_ID="ASIA..."
+$env:AWS_SECRET_ACCESS_KEY="..."
+$env:AWS_SESSION_TOKEN="..."
+$env:AWS_DEFAULT_REGION="us-east-1"
+```
+
+(Substitua os valores pelos copiados da Etapa 2.5.)
+
+Valide que funcionou:
+
+```powershell
+aws sts get-caller-identity
+```
+
+Deve retornar um JSON com seu `Account`, `UserId` e `Arn`. Se retornar `InvalidClientTokenId`, as credenciais estão erradas ou expiradas.
+
+### Etapa 4. Provisionar a infraestrutura
+
+**4.1** Navegue para a pasta do projeto e depois para a pasta do Terraform:
+
+```powershell
+cd C:\Users\heito\Documents\ProjetoHarness\harness-rag\infra\terraform
+```
+
+**4.2** Inicialize o Terraform (baixa o provider AWS, só precisa rodar uma vez por máquina):
+
+```powershell
+terraform init
+```
+
+Saída esperada: `Terraform has been successfully initialized!`
+
+**4.3** Aplique a configuração:
+
+```powershell
+terraform apply -var "worker_count=3"
+```
+
+O Terraform vai mostrar um plano com **10 recursos a criar** (3 EC2, 2 SQS, Security Group, Key Pair, etc) e pedir confirmação. Digite `yes` e pressione Enter.
+
+A criação leva ~30 segundos para as filas SQS e ~1 minuto para subir as EC2.
+
+**4.4** Quando terminar, o Terraform vai imprimir os outputs:
+
+```
+worker_public_ips = [
+  "44.213.103.163",
+  "35.153.126.58",
+  "34.239.93.33",
+]
+```
+
+Anote esses IPs, você vai usar na próxima etapa.
+
+**Atenção:** as EC2 acabaram de ser criadas mas o aplicativo ainda não está rodando. O script `user_data.sh` está executando em background, instalando Docker, Ollama e o worker. Isso leva **~5 minutos**.
+
+### Etapa 5. Aguardar bootstrap e validar
+
+**5.1** Espere 5 minutos. Para verificar se o bootstrap terminou em uma das EC2:
+
+```powershell
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 -o StrictHostKeyChecking=no ubuntu@<IP_DA_WORKER> "tail -3 /var/log/cloud-init-output.log"
+```
+
+Se aparecer a linha **`Bootstrap concluido. Worker rodando.`**, está pronto. Caso contrário, espere mais um minuto e tente de novo.
+
+**5.2** Para acompanhar o bootstrap em tempo real (opcional, útil em desenvolvimento):
+
+```powershell
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 ubuntu@<IP_DA_WORKER> "sudo tail -f /var/log/cloud-init-output.log"
+```
+
+Use Ctrl+C para sair do tail.
+
+**5.3** Para confirmar que o worker está conectado à fila SQS:
+
+```powershell
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 ubuntu@<IP_DA_WORKER> "sudo docker logs harness-worker 2>&1 | grep queue_resolved | tail -1"
+```
+
+Deve mostrar uma linha como `queue_resolved queue_url=https://sqs.us-east-1.amazonaws.com/...`. Se aparecer, o worker está esperando mensagens.
+
+### Etapa 6. Publicar jobs e processar
+
+**6.1** Abra um novo PowerShell na raiz do projeto (não esqueça de re-exportar as credenciais AWS na nova janela):
+
+```powershell
+cd C:\Users\heito\Documents\ProjetoHarness\harness-rag
+
+$env:AWS_ACCESS_KEY_ID="ASIA..."
+$env:AWS_SECRET_ACCESS_KEY="..."
+$env:AWS_SESSION_TOKEN="..."
+$env:AWS_DEFAULT_REGION="us-east-1"
+```
+
+**6.2** Limpe a variável `AWS_ENDPOINT_URL` se ela existir (ela é usada para LocalStack, e o producer precisa apontar para AWS real):
+
+```powershell
+Remove-Item Env:AWS_ENDPOINT_URL -ErrorAction SilentlyContinue
+```
+
+**6.3** Publique os 6 jobs (1 por PDF do corpus FIA):
+
+```powershell
+python infra/producer.py
+```
+
+Saída esperada: `6 mensagens publicadas em 'ingestion-jobs'`.
+
+**6.4** Para acompanhar o processamento ao vivo, abra mais janelas SSH (uma por worker):
+
+```powershell
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 ubuntu@<IP_WORKER_1> "sudo docker logs -f harness-worker --tail 0"
+```
+
+Cada PDF leva de 3 a 6 minutos. Com 3 workers em paralelo, o processamento completo deve terminar em ~10 minutos.
+
+**6.5** Quando os logs ficarem quietos (sem novos `message_done`), todos os PDFs foram processados. Verifique as métricas agregadas:
+
+```powershell
+python infra/metrics_viewer.py --window 30
+```
+
+Deve mostrar:
+- `pdf_processed_success`: 6
+- `chunks_inserted`: total na faixa de 3000 a 5000
+- `embedding_tokens_consumed`: total na faixa de 300 mil
+- `pdf_processing_duration_ms`: média na ordem de 200 mil (3-4 min por PDF)
+
+### Etapa 7. Destruir a infraestrutura
+
+**Importante:** sempre destrua os recursos após uso para não consumir crédito desnecessariamente.
+
+```powershell
+cd C:\Users\heito\Documents\ProjetoHarness\harness-rag\infra\terraform
+terraform destroy
+```
+
+Digite `yes` quando pedir confirmação. Em ~1 minuto tudo é removido (EC2, SQS, etc).
+
+**7.2** No AWS Academy, clique em **End Lab** no topo da página. Isso encerra o relógio do lab e libera o crédito não consumido.
+
+### Troubleshooting
+
+**Erro `InvalidClientTokenId` ao rodar `aws sts get-caller-identity`:**
+As credenciais expiraram. Volte na Etapa 2, copie credenciais novas e re-exporte na Etapa 3.
+
+**Erro `aws: command not found` ou `terraform: command not found`:**
+PATH não está configurado nessa janela. Re-execute o comando da Etapa 1.3.
+
+**Bootstrap das EC2 nunca termina (aguardando mais de 10 minutos):**
+SSH na EC2 e verifique o que está rodando: `ssh ... "ps aux | grep -E 'apt|ollama|docker'"`. Se nada estiver rodando, veja o log de erro: `ssh ... "sudo tail -50 /var/log/cloud-init-output.log"`.
+
+**Worker conecta no LocalStack em vez de AWS real:**
+Variável `AWS_ENDPOINT_URL` está setada quando deveria estar vazia. No worker, isso é controlado pelo `docker run` do user_data.sh (deve estar correto). No producer local, execute `Remove-Item Env:AWS_ENDPOINT_URL` antes do producer.
+
+**`terraform apply` falha com `AccessDenied: iam:CreateRole`:**
+O Terraform deste projeto NÃO cria IAM Role (usa o `LabInstanceProfile` pré-criado pelo Academy). Se está vendo esse erro, você pode estar usando uma versão antiga do código. Atualize via `git pull`.
+
+**Mensagens "duplicadas" na fila (mais de 6 visíveis):**
+Comportamento esperado do SQS. Visibility timeout é 10 min. Se uma mensagem demora mais que isso para ser processada, ela volta a ficar visível e outro worker pega. Isso causa reprocessamento; o sistema é idempotente (ChromaDB faz upsert) então não é problema funcional.
+
+**EC2 nunca aparece como Running no console AWS:**
+Sua conta pode ter atingido quota de instâncias. Verifique: `aws ec2 describe-account-attributes --attribute-names supported-platforms`. Em AWS Academy, quota costuma ser limitada a 4 instâncias `t3.medium` simultâneas.
+
+**Custo do lab disparou:**
+Verifique no console AWS Academy quanto crédito você gastou (campo "Used"). 3 EC2 `t3.medium` por 1 hora custam aproximadamente $0.15. Se gastou mais que isso, provavelmente esqueceu de destruir uma execução anterior. Vá no console EC2 e termine instâncias órfãs manualmente.
+
+### Arquivos importantes para entender o que acontece
+
+| Arquivo | Função |
+|---|---|
+| `infra/terraform/main.tf` | Define os recursos AWS criados |
+| `infra/terraform/variables.tf` | Parâmetros configuráveis (worker_count, region, etc) |
+| `infra/terraform/user_data.sh` | Script que roda no primeiro boot de cada EC2 (instala Docker + Ollama + worker) |
+| `infra/producer.py` | Publica jobs no SQS |
+| `infra/worker.py` | Consome jobs do SQS e processa PDFs |
+| `infra/metrics.py` | Emite métricas no CloudWatch |
+| `infra/metrics_viewer.py` | Consulta métricas agregadas via CLI |
+| `infra/dlq_inspector.py` | Lista mensagens na Dead Letter Queue (para debug) |
 
 ---
 
