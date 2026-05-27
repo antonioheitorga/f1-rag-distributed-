@@ -273,44 +273,51 @@ A latência de embedding do `nomic-embed-text` foi medida via API HTTP do Ollama
 
 A primeira execução tem custo de cold start adicional, pois Ollama carrega o modelo do disco para RAM. Após o warm up, a latência fica estável em 555 ms por embedding, com desvio padrão muito baixo.
 
-A latência completa de processamento de um PDF inclui extração via `pdfplumber`, chunking, embedding em batch, e inserção no ChromaDB. Em execução real com workers EC2 paralelos, capturamos os seguintes valores via métrica `pdf_processing_duration_ms`:
+A latência completa de processamento de um PDF inclui extração via `pdfplumber`, chunking, embedding em batch, e inserção no ChromaDB. A tabela abaixo combina duas fontes de dados: chunks e tokens vêm de execução local sequencial determinística via `benchmarks/medir_tokens.py` (deterministicos, dependem apenas do conteúdo do PDF); durações vêm de execução real em AWS distribuído com 3 workers t3.medium, capturadas via métrica `pdf_processing_duration_ms`.
 
-| PDF (seção FIA) | Chunks | Duração (segundos) |
-|---|---|---|
-| A. General Provisions | 642 | 345 |
-| B. Sporting | n/d | n/d |
-| C. Technical | 777 | 357 |
-| D. Financial (Teams) | 443 | 196 |
-| E. Financial (PU) | 459 | 194 |
-| F. Operational | 236 | 101 |
+| PDF (seção FIA) | Chunks | Tokens embedding | Duração AWS (segundos) |
+|---|---|---|---|
+| A. General Provisions | 642 | 56.445 | 345 |
+| B. Sporting | 777 | 60.517 | n/d |
+| C. Technical | 1731 | 144.614 | 357 |
+| D. Financial (Teams) | 443 | 33.055 | 196 |
+| E. Financial (PU) | 459 | 32.946 | 194 |
+| F. Operational | 236 | 17.167 | 101 |
 
-A seção marcada como `n/d` correspondeu a uma mensagem retried por visibility timeout e processada após o intervalo da janela de métricas considerada.
+A duração de B. Sporting não foi capturada no run AWS distribuído porque o log detalhado do worker que processou essa mensagem não foi inspecionado durante a janela de monitoramento. Chunks e tokens foram preenchidos a partir de execução local determinística posterior, que confirmou os números reais do corpus.
 
 ### 5.3 Throughput agregado
 
-Em uma execução com 6 PDFs e 3 workers paralelos, o sistema produziu os seguintes dados agregados (consultados via `infra/metrics_viewer.py --window 30` no CloudWatch real):
+A tabela abaixo combina dois conjuntos de medições. Chunks e tokens vêm de execução completa local determinística (deterministicos por chunk_config e conteúdo do PDF). Contadores de jobs/sucesso/erro e durações vêm do agregado CloudWatch da execução AWS distribuída, consultado via `infra/metrics_viewer.py --window 30`.
 
 | Métrica | Soma | Mínimo | Média | Máximo |
 |---|---|---|---|---|
-| chunks_inserted | 3127 | 236 | 521 | 777 |
+| chunks_inserted | 4288 | 236 | 715 | 1731 |
+| embedding_tokens_consumed | 344744 | 17167 | 57457 | 144614 |
 | jobs_published | 12 | 6 | 6 | 6 |
 | pdf_processed_success | 6 | 1 | 1 | 1 |
 | pdf_processed_error | 6 | 1 | 1 | 1 |
 | pdf_processing_duration_ms | 1462944 | 101503 | 243824 | 361183 |
 
-A soma de `chunks_inserted` revela um total de 3127 chunks distribuídos entre os três vector stores locais. O `jobs_published` igual a 12 reflete duas execuções do producer durante o experimento (a primeira para validar e a segunda para repopular após ajustes). O `pdf_processed_error` igual a 6 corresponde a falhas transitórias da primeira tentativa, antes da aplicação do patch que tornou o worker idempotente. Após o patch, os seis PDFs foram processados com sucesso em uma segunda execução, totalizando os seis registros de `pdf_processed_success`.
+A soma de `chunks_inserted` revela um total de 4288 chunks distribuídos entre os três vector stores locais. O `embedding_tokens_consumed` é a métrica nova emitida via `prompt_eval_count` retornado pela API do Ollama, agora capturada por PDF processado. O `jobs_published` igual a 12 reflete duas execuções do producer durante o experimento (a primeira para validar e a segunda para repopular após ajustes). O `pdf_processed_error` igual a 6 corresponde a falhas transitórias da primeira tentativa, antes da aplicação do patch que tornou o worker idempotente. Após o patch, os seis PDFs foram processados com sucesso em uma segunda execução, totalizando os seis registros de `pdf_processed_success`.
 
 ### 5.4 Custo de tokens
 
-O sistema é majoritariamente CPU-bound em embeddings, não em geração de texto. O custo de tokens é dominado pelo trabalho do `nomic-embed-text` na indexação. Os valores abaixo são estimativas a partir do total de chunks e do tamanho médio de cada um, e não medições diretas. A razão para estimar em vez de medir é discutida no item 7.5 (limitação reconhecida): o `emit_metric()` do projeto não tem hoje uma métrica `tokens_consumed`, embora a API do Ollama retorne `prompt_eval_count` e `eval_count` em cada resposta, valores que poderiam ser somados em produção real.
+O sistema é majoritariamente CPU-bound em embeddings, não em geração de texto. O custo de tokens é dominado pelo trabalho do `nomic-embed-text` na indexação.
 
-| Componente | Tokens estimados |
+A métrica `embedding_tokens_consumed` é emitida no CloudWatch a cada PDF processado pelo worker. O valor vem do campo `prompt_eval_count` retornado pela API do Ollama em cada chamada de embedding, somado por todos os batches do PDF. Em execução completa do corpus FIA 2026 (4288 chunks), foram medidos **344.744 tokens** consumidos no embedding, com média de aproximadamente 80 tokens por chunk.
+
+Para o gerador, os números são significativamente menores e variam por query:
+
+| Componente | Tokens por unidade |
 |---|---|
-| Tokens de input para embedding (3127 chunks × aproximadamente 250 tokens por chunk) | aproximadamente 781750 |
-| Tokens de output do gerador por query (resposta de até 300 tokens) | aproximadamente 300 |
-| Tokens de input do gerador por query (contexto de até 4000 tokens) | aproximadamente 4000 |
+| Tokens de input para embedding (por chunk) | aproximadamente 80 (medido via `prompt_eval_count`) |
+| Tokens de input do gerador por query (contexto recuperado) | até 4000 |
+| Tokens de output do gerador por query (resposta) | até 300 |
 
 Como tanto o embedding quanto a geração ocorrem em modelos auto-hospedados via Ollama, o custo monetário direto de tokens é zero. O custo real é o tempo de CPU consumido nas EC2, refletido em horas de uso do AWS Academy.
+
+A implementação da métrica vive em `dados/ingestion.py` (função `_embed_batch` retorna `(embeddings, tokens)`, propagado até `process_single_pdf`) e em `infra/worker.py` (chama `emit_metric("embedding_tokens_consumed", ...)` após cada PDF). Caso a versão do Ollama em uso não retorne `prompt_eval_count`, o código cai em estimativa por contagem de palavras (heurística aproximadamente 1 token a cada 0.75 palavras).
 
 ### 5.5 Taxa de erro
 
@@ -331,8 +338,8 @@ O enunciado §4.4 exige logs estruturados que permitam reconstruir o fluxo de ex
 **Logs por linha no worker.** A função `_log()` em `infra/worker.py` produz uma linha por evento, no formato:
 
 ```
-2026-05-26T04:10:18+00:00 [ip-172-31-14-165#1] message_received pdf=fia_2026_section_c_technical.pdf
-2026-05-26T04:16:02+00:00 [ip-172-31-14-165#1] message_done pdf=fia_2026_section_c_technical.pdf chunks=642 duration_ms=344856
+2026-05-26T04:10:18+00:00 [ip-172-31-14-165#1] message_received pdf=fia_2026_section_a_general_provisions.pdf
+2026-05-26T04:16:02+00:00 [ip-172-31-14-165#1] message_done pdf=fia_2026_section_a_general_provisions.pdf chunks=642 embedding_tokens=56445 duration_ms=344856
 ```
 
 Cada linha contém timestamp ISO-8601 em UTC, identificador único do worker no formato `hostname#pid`, nome do evento, e pares chave-valor com os dados relevantes. O formato é greppable: filtrar eventos de um worker específico, contar mensagens processadas em uma janela de tempo ou correlacionar com métricas CloudWatch é trivial com ferramentas Unix padrão.
@@ -422,9 +429,9 @@ A busca vetorial atual retorna os top K chunks por similaridade de cosseno, sem 
 
 O sistema responde uma query por vez, sem memória entre interações. Para queries que dependem de contexto anterior ("e quanto à seção C?"), o usuário precisa reformular manualmente. Implementar memória conversacional via LangGraph state persistence é uma extensão natural.
 
-### 7.5 Métricas de tokens não emitidas
+### 7.5 Geração não instrumentada por tokens
 
-Embora a Seção 5.4 estime tokens consumidos, o sistema não emite essas estimativas como métricas CloudWatch. As métricas atuais cobrem latência, throughput e erros, mas tokens são calculados apenas em análise post hoc. Adicionar `embedding_tokens_input` e `generation_tokens_output` ao `emit_metric()` daria observabilidade direta do custo computacional.
+A métrica `embedding_tokens_consumed` (implementada e descrita na Seção 5.4) cobre o lado de indexação. O lado de geração ainda não emite uma métrica equivalente (`generation_tokens_output`). O motivo é que o gerador roda na máquina local via Streamlit, fora do fluxo SQS+CloudWatch dos workers. Adicionar emissão de métrica também no caminho da query daria observabilidade simétrica ao custo computacional.
 
 ### 7.6 Cobertura de testes desigual
 
