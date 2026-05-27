@@ -219,9 +219,20 @@ def chunk_data(data: dict, chunk_size: Optional[int] = None,
 # Passo 5 — Embedding + Ingestão
 # ---------------------------------------------------------------------------
 
-def _embed_batch(texts: list[str]) -> list[list[float]]:
+def _embed_batch(texts: list[str]) -> tuple[list[list[float]], int]:
+    """Embeda um batch de textos e retorna (embeddings, total_tokens).
+
+    O total de tokens vem do campo prompt_eval_count da resposta Ollama,
+    que representa o número real de tokens processados pelo modelo. Caso
+    a versão do servidor não retorne esse campo, cai em estimativa por
+    contagem de palavras (heurística OpenAI: ~1 token a cada 0.75 palavras).
+    """
     response = ollama.embed(model=EMBED_MODEL, input=texts)
-    return response["embeddings"]
+    embeddings = response["embeddings"]
+    tokens = response.get("prompt_eval_count")
+    if tokens is None:
+        tokens = sum(int(len(t.split()) / 0.75) for t in texts)
+    return embeddings, tokens
 
 
 def build_chunks_for_ingest(chunks_data: dict) -> list[dict]:
@@ -246,16 +257,22 @@ def build_chunks_for_ingest(chunks_data: dict) -> list[dict]:
     ]
 
 
-def ingest_chunks(collection, chunks: list[dict]) -> int:
-    """Ingere chunks no ChromaDB em batches. Retorna total inserido."""
+def ingest_chunks(collection, chunks: list[dict]) -> tuple[int, int]:
+    """Ingere chunks no ChromaDB em batches. Retorna (inserido, total_tokens).
+
+    O total_tokens acumula prompt_eval_count de todos os batches embedados,
+    permitindo emissão de métrica precisa de tokens consumidos por execução.
+    """
     inserted = 0
+    total_tokens = 0
     for i in range(0, len(chunks), EMBED_BATCH_SIZE):
         batch = chunks[i : i + EMBED_BATCH_SIZE]
         texts = [c["text"] for c in batch]
         ids = [c["uid"] for c in batch]
         metadatas = [c["metadata"] for c in batch]
 
-        embeddings = _embed_batch(texts)
+        embeddings, batch_tokens = _embed_batch(texts)
+        total_tokens += batch_tokens
 
         collection.add(
             ids=ids,
@@ -265,7 +282,7 @@ def ingest_chunks(collection, chunks: list[dict]) -> int:
         )
         inserted += len(batch)
 
-    return inserted
+    return inserted, total_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +308,7 @@ def process_single_pdf(
 
     client = chromadb.PersistentClient(path=str(vectorstore_path))
     collection = client.get_or_create_collection(collection_name)
-    inserted = ingest_chunks(collection, chunks_for_ingest)
+    inserted, embedding_tokens = ingest_chunks(collection, chunks_for_ingest)
 
     return {
         "source_file": extracted["source_file"],
@@ -299,6 +316,7 @@ def process_single_pdf(
         "total_pages": extracted["total_pages"],
         "total_chunks": chunked["total_chunks"],
         "chunks_inserted": inserted,
+        "embedding_tokens": embedding_tokens,
         "validation_ok": validation["ok"],
         "validation_issues": validation["issues"],
     }

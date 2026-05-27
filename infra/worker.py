@@ -144,11 +144,13 @@ def main():
                     "message_done",
                     pdf=result["source_file"],
                     chunks=result["chunks_inserted"],
+                    embedding_tokens=result.get("embedding_tokens", 0),
                     duration_ms=result["duration_ms"],
                 )
                 emit_metric("pdf_processed_success", 1)
                 emit_metric("pdf_processing_duration_ms", result["duration_ms"], unit="Milliseconds")
                 emit_metric("chunks_inserted", result["chunks_inserted"])
+                emit_metric("embedding_tokens_consumed", result.get("embedding_tokens", 0))
             except Exception as exc:
                 failed += 1
                 _log(

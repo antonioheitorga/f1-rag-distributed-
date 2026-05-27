@@ -73,6 +73,7 @@ def main():
 
     total_inserted = 0
     start = time.time()
+    total_tokens = 0
 
     for chunk_file in chunk_files:
         with open(chunk_file, encoding="utf-8") as f:
@@ -83,11 +84,12 @@ def main():
         print(f"Ingerindo [{section}] — {len(chunks)} chunks válidos ...", end=" ", flush=True)
 
         t0 = time.time()
-        n = ingest_chunks(collection, chunks)
+        n, tokens = ingest_chunks(collection, chunks)
         elapsed = time.time() - t0
 
         total_inserted += n
-        print(f"OK ({n} inseridos, {elapsed:.1f}s)")
+        total_tokens += tokens
+        print(f"OK ({n} inseridos, {tokens} tokens, {elapsed:.1f}s)")
 
     total_time = time.time() - start
     final_count = collection.count()
@@ -95,6 +97,7 @@ def main():
     print(f"\n{'='*55}")
     print(f"Ingestão concluída em {total_time:.1f}s")
     print(f"Total inserido      : {total_inserted:,} chunks")
+    print(f"Tokens consumidos   : {total_tokens:,}")
     print(f"Total no ChromaDB   : {final_count:,} documentos")
     print(f"Vector store em     : {VECTORSTORE}")
     print(f"{'='*55}")

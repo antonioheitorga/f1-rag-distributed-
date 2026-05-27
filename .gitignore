@@ -33,4 +33,5 @@ dados/extracted/
 dados/processed/
 dados/chunks/
 dados/vectorstore/
+dados/vectorstore_relatorio/
 docs/licoes-aprendidas.md
