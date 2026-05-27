@@ -131,3 +131,21 @@ CLOUDWATCH_NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "F1RagHarness")
 # ----------------------------------------------------------------------------
 # TRACES_DIR: onde os traces JSON de cada execução do orquestrador são salvos.
 TRACES_DIR = os.getenv("TRACES_DIR", "./traces")
+
+
+# ----------------------------------------------------------------------------
+# Telemetria de bibliotecas externas
+# ----------------------------------------------------------------------------
+# SILENCE_CHROMA_TELEMETRY: silencia avisos repetidos do tipo
+# "Failed to send telemetry event ClientStartEvent: capture() takes
+# 1 positional argument but 3 were given". O problema vem de incompatibilidade
+# entre a versão atual do ChromaDB e a versão de PostHog instalada como
+# dependência transitiva. Setting(anonymized_telemetry=False) e a env var
+# ANONYMIZED_TELEMETRY não silenciam na versão 0.5.20; a única forma estável
+# é elevar o nível do logger específico do ChromaDB para CRITICAL.
+# Default "True" para deixar o output limpo. Defina como "False" se quiser
+# ver as mensagens (útil para diagnosticar problemas reais de telemetria).
+SILENCE_CHROMA_TELEMETRY = os.getenv("SILENCE_CHROMA_TELEMETRY", "True").lower() == "true"
+if SILENCE_CHROMA_TELEMETRY:
+    import logging as _logging
+    _logging.getLogger("chromadb.telemetry.product.posthog").setLevel(_logging.CRITICAL)
