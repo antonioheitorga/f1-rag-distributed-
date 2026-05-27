@@ -215,6 +215,71 @@ Tempo medido (Sessão de validação): **~24 min agregados** para 4288 chunks em
 
 ---
 
+## Ferramentas de medição e inspeção
+
+Além dos 4 modos de ingestão acima (que executam o pipeline em diferentes topologias), o projeto inclui 3 ferramentas auxiliares para gerar dados para o relatório, consultar métricas e debugar falhas.
+
+### `benchmarks/medir_tokens.py` — medição determinística por PDF
+
+Roda o pipeline localmente em sequencial, mas com captura detalhada por PDF: número de chunks inseridos, tokens consumidos pelo embedding (via `prompt_eval_count` da API Ollama) e duração de processamento. Útil para gerar a tabela de dados reais que aparece nas Seções 5.2, 5.3 e 5.4 do documento técnico.
+
+Diferente do Modo 1 (`dados/pipeline.py`), este script é otimizado para reportar números, não para ser a pipeline oficial. Ignora as etapas intermediárias salvas em disco e vai direto chunk-por-chunk.
+
+Pré-requisito: Ollama rodando localmente com `nomic-embed-text` baixado.
+
+```bash
+python benchmarks/medir_tokens.py
+```
+
+Saída esperada:
+
+```
+PDF                                                            chunks     tokens   duracao
+-------------------------------------------------------------------------------------------
+fia_2026_..._section_a_general_provisions_..._.pdf                642      56445     11.1s
+fia_2026_..._section_b_sporting_..._.pdf                          777      60517      9.6s
+fia_2026_..._section_c_technical_..._.pdf                        1731     144614     24.9s
+fia_2026_..._section_d_financial_-_f1_teams_..._.pdf              443      33055      7.6s
+fia_2026_..._section_e_financial_-_pu_manufacturers_..._.pdf      459      32946      7.0s
+fia_2026_..._section_f_operational_..._.pdf                       236      17167      3.1s
+-------------------------------------------------------------------------------------------
+TOTAL                                                            4288     344744     63.3s
+```
+
+### `infra/metrics_viewer.py` — consulta agregada de métricas
+
+Lê as métricas emitidas no CloudWatch (real ou LocalStack) e imprime sum/min/avg/max por métrica numa janela de tempo. Usado para inspecionar a saúde do sistema após uma execução distribuída.
+
+```bash
+# Janela padrão de 5 minutos
+python infra/metrics_viewer.py
+
+# Janela customizada de 30 minutos
+python infra/metrics_viewer.py --window 30
+
+# Agrupar por WorkerId (mostra contribuição de cada worker)
+python infra/metrics_viewer.py --by-worker
+
+# Filtrar uma métrica específica
+python infra/metrics_viewer.py --metric chunks_inserted
+```
+
+Em dev local, requer `AWS_ENDPOINT_URL=http://localhost:4566` apontando para LocalStack. Em produção, deixe a variável vazia para usar o CloudWatch real.
+
+### `infra/dlq_inspector.py` — debug post-mortem da DLQ
+
+Lista as mensagens que caíram na Dead Letter Queue (após 3 tentativas falhas). Mostra payload e contagem de receives. Útil quando um worker está falhando consistentemente para entender o que está em loop.
+
+```bash
+python infra/dlq_inspector.py
+```
+
+Saída esperada se DLQ vazia: `Nenhuma mensagem na DLQ.`
+
+Em caso de falhas, mostra para cada mensagem: PDF que estava sendo processado, número de tentativas, timestamp do primeiro receive.
+
+---
+
 ## Tutorial AWS Academy passo a passo
 
 Esta seção descreve, do zero, como subir o projeto na AWS real usando o AWS Academy Learner Lab. Foi escrita após duas sessões de validação onde encontramos várias armadilhas, e está organizada para que qualquer pessoa consiga reproduzir sem precisar entender Terraform ou AWS profundamente.
