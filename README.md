@@ -50,7 +50,7 @@ harness-rag/
 │   └── generator.py              # Compõe resposta final
 │
 ├── orchestration/
-│   └── orchestrator.py           # Grafo LangGraph + _classify_source()
+│   └── orchestrator.py           # Grafo LangGraph hub-and-spoke (orquestrador central)
 │
 ├── prompts/                      # System prompts versionados (§4.3 do enunciado)
 │   ├── reformulator.md
@@ -616,7 +616,7 @@ A suite usa **pytest** com **marker `integration`** para separar testes que exig
 | Arquivo | Unit | Integration | O que testa |
 |---|---|---|---|
 | `tests/test_generator.py` | 6 | 0 | Geração de resposta, fallback de fonte, flags `corpus_used`/`web_used` |
-| `tests/test_orchestrator.py` | 4 | 0 | Roteamento condicional do grafo LangGraph |
+| `tests/test_orchestrator.py` | 4 | 0 | Roteamento hub-and-spoke do grafo LangGraph (orquestrador intercala entre agentes) |
 | `tests/test_reformulator.py` | 3 | 1 | Reescrita de query (mockada) e teste real contra Ollama |
 | `tests/test_retriever.py` | 5 | 0 | Busca vetorial, threshold, fallback, append de trace |
 | `tests/test_retriever_integration.py` | 0 | 3 | Smoke test contra ChromaDB persistente real |

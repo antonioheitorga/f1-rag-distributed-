@@ -7,33 +7,47 @@ Combina busca vetorial em corpus próprio (RAG) com fallback para web via Tavily
 
 ## Fluxo do sistema
 
+Arquitetura **hub-and-spoke** (supervisor): o orquestrador é o agente central.
+O usuário conversa apenas com o orquestrador, e cada agente especialista
+conversa apenas com o orquestrador — nunca entre si. A cada rodada o
+orquestrador observa o estado, decide o próximo agente de forma
+determinística (sem LLM), o agente executa e devolve o resultado ao
+orquestrador, que identifica o próximo passo.
+
 ```mermaid
 flowchart TD
-    U(["Usuário"]) -->|query_original| REFORM
+    U(["Usuário"]) -->|query_original| O
+    O -->|resposta| UI(["Streamlit"])
+
+    O{{"Orquestrador\nhub · roteamento sem LLM"}}
+
+    O -- "falta query_reformulada" --> REFORM
+    O -- "falta retriever_result" --> RET
+    O -- "fallback_to_web e falta web_result" --> WS
+    O -- "falta resposta" --> GEN
+    O -- "resposta pronta" --> E([END])
 
     REFORM["Reformulador\nllama3.1:8b · temp=0.0"]
-    REFORM -->|query_reformulada| RET
-
     RET["Retriever\nChromaDB · nomic-embed-text"]
-    RET --> COND{fallback?}
-
-    COND -- "false · fonte = corpus" --> GEN
-    COND -- true --> WS
-
     WS["Web Searcher\nTavily API"]
-    WS --> COND2{encontrou?}
-
-    COND2 -- "true · fonte = web" --> GEN
-    COND2 -- "false · low_confidence = True" --> GEN
-
     GEN["Gerador\nllama3.1:8b"]
-    GEN -->|resposta| UI(["Streamlit"])
 
+    REFORM -. query_reformulada .-> O
+    RET -. retriever_result .-> O
+    WS -. web_result .-> O
+    GEN -. resposta + flags .-> O
+
+    style O      fill:#dbeafe,stroke:#2563eb,stroke-width:2px
     style REFORM fill:#dbeafe,stroke:#3b82f6
     style RET    fill:#dcfce7,stroke:#22c55e
     style WS     fill:#fef9c3,stroke:#eab308
     style GEN    fill:#fce7f3,stroke:#ec4899
 ```
+
+Setas sólidas = orquestrador despachando para um agente; setas tracejadas =
+agente devolvendo o resultado ao orquestrador. A decisão é determinística e
+baseada em quais campos do `GraphState` já foram preenchidos — cada agente
+preenche um campo distinto, então o fluxo sempre avança (sem ciclo infinito).
 
 ---
 
@@ -41,10 +55,12 @@ flowchart TD
 
 | Decisão | Motivo |
 |---|---|
+| Hub-and-spoke (orquestrador central) | Agentes desacoplados: cada um só conhece o orquestrador. Trocar/reordenar uma etapa não exige mexer nos outros agentes |
 | Reformulador roda sempre | Garante que o Retriever recebe query em inglês formal, vocabulário do corpus |
-| Retriever decide o `fallback` | Ele é o dono do contexto de busca — encapsula a lógica de relevância |
-| Orquestrador sem LLM | Transições são lógica determinística — reduz latência e facilita debugging |
-| Terceiro caminho `low_confidence` | Usuário é avisado quando a resposta é incerta, em vez de resposta silenciosamente errada |
+| Retriever decide o `fallback` | Ele é o dono do contexto de busca — encapsula a lógica de relevância; o orquestrador só lê o flag `fallback_to_web` |
+| Orquestrador sem LLM | Transições são lógica determinística sobre o estado — reduz latência, custo e facilita debugging |
+| Orquestrador registra decisão no trace | Cada passo grava `decisao` + `motivo`, tornando o raciocínio do roteamento auditável |
+| Caminho `low_confidence` | Usuário é avisado quando a resposta é incerta, em vez de resposta silenciosamente errada |
 
 ---
 
@@ -59,7 +75,7 @@ flowchart TD
 | `web_result` | `dict\|None` | Web Searcher | Gerador |
 | `corpus_used` | `bool` | Gerador | Orquestrador (classifica `fonte`) |
 | `web_used` | `bool` | Gerador | Orquestrador (classifica `fonte`) |
-| `fonte` | `str` | Orquestrador (pós-grafo) | Streamlit, export JSON |
+| `fonte` | `str` | Orquestrador (ao encerrar) | Streamlit, export JSON |
 | `low_confidence` | `bool` | Gerador | Streamlit |
 | `confidence_warning` | `str\|None` | Retriever ou Gerador | Streamlit |
 | `resposta` | `str` | Gerador | Orquestrador (END), Streamlit |
@@ -103,13 +119,27 @@ flowchart TD
 
 ### `trace` — cada agente appenda
 
+Os agentes especialistas gravam entradas com `entrada`/`saida`/`latencia_ms`;
+o orquestrador grava entradas próprias com `decisao`/`motivo` a cada rodada,
+de modo que o trace intercala orquestrador e agentes
+(`orchestrator → reformulator → orchestrator → retriever → ...`).
+
 ```python
+# entrada de um agente especialista
 {
     "agente":      str,        # "reformulator" | "retriever" | "web_searcher" | "generator"
     "entrada":     str | dict,
     "saida":       str | dict,
     "timestamp":   str,        # ISO 8601
     "latencia_ms": int,
+}
+
+# entrada do orquestrador
+{
+    "agente":    "orchestrator",
+    "decisao":   str,          # próximo destino: "reformulator" | ... | "end"
+    "motivo":    str,          # por que essa decisão (ex: "query ainda não reformulada")
+    "timestamp": str,          # ISO 8601
 }
 ```
 
@@ -123,7 +153,7 @@ flowchart TD
 | **Retriever** | `agents/retriever.py` | ❌ | `query_reformulada` | `retriever_result`, `trace` |
 | **Web Searcher** | `agents/web_searcher.py` | ❌ | `query_reformulada` | `web_result`, `trace` |
 | **Gerador** | `agents/generator.py` | ✅ llama3.1:8b | `query_original/query_reformulada`, `retriever_result`, `web_result` | `resposta`, `corpus_used`, `web_used`, `low_confidence`, `confidence_warning`, `trace` |
-| **Orquestrador** | `orchestration/orchestrator.py` | ❌ | `retriever_result` (roteamento), `corpus_used`/`web_used` (classificação) | `session_id`, `trace` (init), `fonte` (pós-grafo) |
+| **Orquestrador** | `orchestration/orchestrator.py` | ❌ | todo o `GraphState` (decide próximo passo por quais campos estão preenchidos) | `trace` (decisao/motivo a cada rodada), `fonte` (ao encerrar) |
 
 ---
 

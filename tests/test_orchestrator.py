@@ -73,8 +73,14 @@ def test_fluxo_corpus(mock_ref, mock_ret, mock_web, mock_gen):
     assert mock_web.called is False
     assert mock_gen.called
 
+    # Hub-and-spoke: o orquestrador intercala entre cada agente especialista.
     agentes = [t["agente"] for t in final_state["trace"]]
-    assert agentes == ["reformulator", "retriever", "generator"]
+    assert agentes == [
+        "orchestrator", "reformulator",
+        "orchestrator", "retriever",
+        "orchestrator", "generator",
+        "orchestrator",
+    ]
 
 
 @patch("orchestration.orchestrator.generate", side_effect=_fake_generate)
@@ -86,7 +92,13 @@ def test_fluxo_web_fallback(mock_ref, mock_ret, mock_web, mock_gen):
 
     assert mock_web.called
     agentes = [t["agente"] for t in final_state["trace"]]
-    assert agentes == ["reformulator", "retriever", "web_searcher", "generator"]
+    assert agentes == [
+        "orchestrator", "reformulator",
+        "orchestrator", "retriever",
+        "orchestrator", "web_searcher",
+        "orchestrator", "generator",
+        "orchestrator",
+    ]
 
 
 @patch("orchestration.orchestrator.generate", side_effect=_fake_generate)
@@ -112,4 +124,9 @@ def test_state_final_completo(mock_ref, mock_ret, mock_web, mock_gen):
     assert final_state["fonte"] == "corpus"
     assert final_state["low_confidence"] is False
     assert final_state["confidence_warning"] is None
-    assert [t["agente"] for t in final_state["trace"]] == ["reformulator", "retriever", "generator"]
+    assert [t["agente"] for t in final_state["trace"]] == [
+        "orchestrator", "reformulator",
+        "orchestrator", "retriever",
+        "orchestrator", "generator",
+        "orchestrator",
+    ]

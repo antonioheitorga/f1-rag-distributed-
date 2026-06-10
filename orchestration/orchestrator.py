@@ -1,11 +1,18 @@
-"""Orquestrador LangGraph.
+"""Orquestrador LangGraph (padrão hub-and-spoke / supervisor).
 
-Monta o grafo do sistema RAG multiagente:
-reformulator -> retriever -> {web_searcher} -> generator
+O orquestrador é um agente central: o usuário conversa apenas com ele, e
+cada agente especialista (reformulator, retriever, web_searcher, generator)
+conversa apenas com o orquestrador — nunca entre si.
 
-A transição entre retriever e web_searcher é condicional, baseada
-no flag `fallback_to_web` do retriever_result. Lógica determinística,
-sem LLM.
+A cada rodada o orquestrador observa o estado, decide o próximo agente de
+forma determinística (sem LLM, baseado em quais campos do GraphState já
+foram preenchidos), o agente executa e devolve o resultado ao orquestrador,
+que então identifica o próximo passo. O ciclo encerra quando a resposta
+está pronta.
+
+    usuário ─► orchestrator ─► {reformulator|retriever|web_searcher|generator}
+                    ▲                        │
+                    └────────────────────────┘ (todo agente volta ao hub)
 """
 
 import json
@@ -54,34 +61,93 @@ def _classify_source(corpus_used: bool, web_used: bool) -> str:
     return "none"
 
 
-def _route_after_retriever(state: GraphState) -> str:
-    """Decide o próximo nó após o retriever.
+def _decide(state: GraphState) -> tuple[str, str]:
+    """Decide o próximo passo do fluxo a partir do estado atual.
 
-    Se o melhor score ficou abaixo do threshold (fallback_to_web=True),
-    chama o web_searcher. Caso contrário, vai direto pro generator.
+    Determinístico, sem LLM: olha quais campos do GraphState já foram
+    preenchidos e devolve (decisao, motivo). Cada agente preenche um campo
+    distinto, então a decisão sempre avança — não há ciclo infinito.
+
+    Fonte única da decisão: consumida tanto pelo nó `orchestrate` (que grava
+    o motivo no trace) quanto pela aresta condicional `_decide_next` (que
+    roteia), garantindo que trace e roteamento nunca divergem.
     """
+    if not state.get("query_reformulada"):
+        return "reformulator", "query ainda não reformulada"
+    if state.get("retriever_result") is None:
+        return "retriever", "query reformulada; falta buscar no corpus"
     retriever_result = state.get("retriever_result") or {}
-    return "web_searcher" if retriever_result.get("fallback_to_web", False) else "generator"
+    if retriever_result.get("fallback_to_web") and state.get("web_result") is None:
+        return "web_searcher", "corpus abaixo do threshold; acionando fallback web"
+    if not state.get("resposta"):
+        return "generator", "contexto reunido; gerando resposta final"
+    return "end", "resposta pronta; encerrando"
+
+
+def orchestrate(state: GraphState) -> dict:
+    """Nó central do grafo: o orquestrador como agente.
+
+    Decide o próximo passo, registra a decisão e o motivo no trace e, ao
+    encerrar, classifica a fonte da resposta. O roteamento em si é feito pela
+    aresta condicional `_decide_next` logo após este nó.
+
+    Lê: todo o GraphState.
+    Escreve: trace (append), fonte (somente ao encerrar).
+    """
+    decisao, motivo = _decide(state)
+
+    updates: dict = {
+        "trace": state.get("trace", []) + [{
+            "agente": "orchestrator",
+            "decisao": decisao,
+            "motivo": motivo,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }],
+    }
+    if decisao == "end":
+        updates["fonte"] = _classify_source(
+            state.get("corpus_used", False),
+            state.get("web_used", False),
+        )
+    return updates
+
+
+def _decide_next(state: GraphState) -> str:
+    """Aresta condicional após o orquestrador: devolve só o destino."""
+    decisao, _ = _decide(state)
+    return decisao
 
 
 def build_graph():
-    """Monta e compila o grafo do sistema."""
+    """Monta e compila o grafo hub-and-spoke.
+
+    O orquestrador é o ponto de entrada e o hub central: roteia para um
+    agente por vez, e todo agente devolve o resultado ao orquestrador.
+    """
     graph = StateGraph(GraphState)
 
+    graph.add_node("orchestrator", orchestrate)
     graph.add_node("reformulator", reformulate)
     graph.add_node("retriever", retrieve)
     graph.add_node("web_searcher", search_web)
     graph.add_node("generator", generate)
 
-    graph.set_entry_point("reformulator")
-    graph.add_edge("reformulator", "retriever")
+    graph.set_entry_point("orchestrator")
     graph.add_conditional_edges(
-        "retriever",
-        _route_after_retriever,
-        {"web_searcher": "web_searcher", "generator": "generator"},
+        "orchestrator",
+        _decide_next,
+        {
+            "reformulator": "reformulator",
+            "retriever": "retriever",
+            "web_searcher": "web_searcher",
+            "generator": "generator",
+            "end": END,
+        },
     )
-    graph.add_edge("web_searcher", "generator")
-    graph.add_edge("generator", END)
+    graph.add_edge("reformulator", "orchestrator")
+    graph.add_edge("retriever", "orchestrator")
+    graph.add_edge("web_searcher", "orchestrator")
+    graph.add_edge("generator", "orchestrator")
 
     return graph.compile()
 
@@ -99,10 +165,6 @@ def run(query_original: str, session_id: str | None = None) -> dict:
         "trace": [],
     }
     state = build_graph().invoke(initial_state)
-    state["fonte"] = _classify_source(
-        state.get("corpus_used", False),
-        state.get("web_used", False),
-    )
     _export_trace(state, sid)
     return state
 
